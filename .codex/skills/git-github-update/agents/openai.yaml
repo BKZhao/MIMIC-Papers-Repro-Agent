@@ -1,0 +1,4 @@
+interface:
+  display_name: "GitHub Update"
+  short_description: "Safe commit and push workflow for GitHub."
+  default_prompt: "Use this skill to stage, commit, rebase-pull, and push repository updates to GitHub with safety checks."

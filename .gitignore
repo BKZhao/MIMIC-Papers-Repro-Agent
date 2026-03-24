@@ -1,0 +1,14 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.DS_Store
+
+.env
+shared/*
+!shared/.gitkeep
+results/*
+!results/.gitkeep
+papers/*
+!papers/.gitkeep
+
