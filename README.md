@@ -88,3 +88,7 @@ The dry run creates placeholder outputs in `shared/` and `results/` so you can v
 - `scientific-skills/statistical-analysis`
 
 These are installed into `./.codex/skills` to keep this framework self-contained.
+
+## Contributors
+
+See [CONTRIBUTORS.md](CONTRIBUTORS.md).
