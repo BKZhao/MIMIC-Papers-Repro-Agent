@@ -28,6 +28,7 @@ This skill avoids force-push and other destructive operations by default.
 Use `scripts/git_update.sh` for the publish step.
 If remote is not configured, use `scripts/set_remote.sh`.
 If SSH identity needs verification, use `scripts/check_ssh_identity.sh`.
+If repository creation is needed and a token is available, use `scripts/create_repo_with_token.sh`.
 
 ## Commands
 
@@ -44,6 +45,11 @@ bash scripts/git_update.sh /path/to/repo "feat: message" origin main
 Check SSH identity:
 ```bash
 bash scripts/check_ssh_identity.sh
+```
+
+Create repo with API token:
+```bash
+bash scripts/create_repo_with_token.sh BKZhao paper-repro-agent private
 ```
 
 ## Rules
