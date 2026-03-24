@@ -73,6 +73,11 @@ paper-repro dry-run --config configs/pipeline.example.yaml
 paper-repro probe-db
 ```
 
+6. Publish updates with fixed git workflow:
+```bash
+bash scripts/git_update.sh "feat: your change summary"
+```
+
 The dry run creates placeholder outputs in `shared/` and `results/` so you can verify orchestration before wiring real databases and model calls.
 
 ## Target skills (clinical research)
