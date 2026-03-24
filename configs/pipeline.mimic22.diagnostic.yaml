@@ -1,0 +1,34 @@
+run:
+  name: tyg-sepsis-repro-diagnostic
+  paper_path: papers/MIMIC.md
+  doi: 10.1038/s41598-024-75050-8
+  dataset: MIMIC-IV v2.2
+  dry_run: false
+
+quality_gates:
+  expected_cohort_size: 1367
+  cohort_tolerance_percent: 10
+  max_fail_metrics: 10
+
+targets:
+  - metric: in_hospital_q4_m1_hr
+    target: 1.63
+  - metric: icu_q4_m1_hr
+    target: 1.79
+  - metric: icu_q4_m3_hr
+    target: 3.40
+  - metric: rcs_inflection
+    target: 8.9
+
+agents:
+  paper_parser:
+    enabled: true
+  cohort_agent:
+    enabled: true
+  stats_agent:
+    enabled: true
+  verify_agent:
+    enabled: true
+  report_agent:
+    enabled: true
+

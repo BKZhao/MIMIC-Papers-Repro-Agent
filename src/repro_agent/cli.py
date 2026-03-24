@@ -4,11 +4,22 @@ import argparse
 import json
 import os
 import subprocess
+import sys
 from pathlib import Path
 
-from .config import load_pipeline_config
+from .agent_runner import AgentRunner
+from .config import PipelineConfig, load_pipeline_config
+from .contracts import SessionState, TaskContract
 from .db.connectors import build_masked_postgres_dsn, load_mimic_pg_env, missing_required_fields
 from .pipeline import PaperReproPipeline
+from .runtime import LocalRuntime
+from .task_builder import (
+    apply_follow_up_answers,
+    build_task_contract,
+    find_missing_high_impact_fields,
+    normalize_task_contract,
+    summarize_task_contract,
+)
 
 
 def _resolve_project_root(path: str | None) -> Path:
@@ -108,6 +119,158 @@ def cmd_probe_db(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_extract_analysis_dataset(args: argparse.Namespace) -> int:
+    project_root = _resolve_project_root(getattr(args, "project_root", None))
+    _load_project_env(project_root)
+    script_path = project_root / "scripts" / "build_tyg_analysis_dataset.py"
+    cmd = [
+        "python3",
+        str(script_path),
+        "--project-root",
+        str(project_root),
+        "--output",
+        args.output,
+        "--missingness-output",
+        args.missingness_output,
+        "--sepsis-source",
+        args.sepsis_source,
+    ]
+    completed = subprocess.run(cmd, text=True, capture_output=True)
+    if completed.stdout.strip():
+        print(completed.stdout.strip())
+    if completed.returncode != 0:
+        if completed.stderr.strip():
+            print(completed.stderr.strip())
+        return completed.returncode
+    return 0
+
+
+def cmd_plan_task(args: argparse.Namespace) -> int:
+    project_root = _resolve_project_root(getattr(args, "project_root", None))
+    _load_project_env(project_root)
+    config = load_pipeline_config((project_root / args.config).resolve())
+
+    contract, session, payload = _plan_task_flow(
+        project_root=project_root,
+        config=config,
+        paper_path=args.paper_path,
+        instructions=_read_instructions(args, project_root),
+        session_id=args.session_id,
+        use_llm=not args.no_llm,
+        interactive=False,
+    )
+    print(
+        json.dumps(
+            {
+                "session_id": session.session_id,
+                "task_contract_path": session.task_contract_path,
+                "missing_high_impact_fields": payload["missing_high_impact_fields"],
+                "used_llm": payload["used_llm"],
+                "llm_error": payload["llm_error"],
+                "task_summary": summarize_task_contract(contract),
+            },
+            indent=2,
+            ensure_ascii=False,
+        )
+    )
+    return 0
+
+
+def cmd_chat(args: argparse.Namespace) -> int:
+    project_root = _resolve_project_root(getattr(args, "project_root", None))
+    _load_project_env(project_root)
+    config = load_pipeline_config((project_root / args.config).resolve())
+
+    contract, session, payload = _plan_task_flow(
+        project_root=project_root,
+        config=config,
+        paper_path=args.paper_path,
+        instructions=_read_instructions(args, project_root),
+        session_id=args.session_id,
+        use_llm=not args.no_llm,
+        interactive=not args.no_prompt,
+    )
+    response: dict[str, object] = {
+        "session_id": session.session_id,
+        "task_contract_path": session.task_contract_path,
+        "missing_high_impact_fields": payload["missing_high_impact_fields"],
+        "used_llm": payload["used_llm"],
+        "llm_error": payload["llm_error"],
+        "task_summary": summarize_task_contract(contract),
+    }
+    if args.run and not payload["missing_high_impact_fields"]:
+        runner = AgentRunner(project_root=project_root, config=config)
+        execution = runner.run_task(contract, session=session, dry_run=(True if args.dry_run else None))
+        response["execution"] = execution.as_dict()
+        print(json.dumps(response, indent=2, ensure_ascii=False))
+        return 0 if execution.summary.status.value == "success" else 2
+
+    print(json.dumps(response, indent=2, ensure_ascii=False))
+    return 0
+
+
+def cmd_run_task(args: argparse.Namespace) -> int:
+    project_root = _resolve_project_root(getattr(args, "project_root", None))
+    _load_project_env(project_root)
+    config = load_pipeline_config((project_root / args.config).resolve())
+    runner = AgentRunner(project_root=project_root, config=config)
+
+    contract: TaskContract
+    session: SessionState | None
+    if args.session_id:
+        session, contract = _load_session_contract(project_root, args.session_id)
+    else:
+        if not args.paper_path:
+            raise SystemExit("--paper-path is required when --session-id is not provided")
+        contract, session, payload = _plan_task_flow(
+            project_root=project_root,
+            config=config,
+            paper_path=args.paper_path,
+            instructions=_read_instructions(args, project_root),
+            session_id=args.session_id,
+            use_llm=not args.no_llm,
+            interactive=False,
+        )
+        if payload["missing_high_impact_fields"]:
+            print(
+                json.dumps(
+                    {
+                        "session_id": session.session_id,
+                        "task_contract_path": session.task_contract_path,
+                        "missing_high_impact_fields": payload["missing_high_impact_fields"],
+                        "task_summary": summarize_task_contract(contract),
+                    },
+                    indent=2,
+                    ensure_ascii=False,
+                )
+            )
+            return 2
+
+    execution = runner.run_task(contract, session=session, dry_run=(True if args.dry_run else None))
+    print(json.dumps(execution.as_dict(), indent=2, ensure_ascii=False))
+    return 0 if execution.summary.status.value == "success" else 2
+
+
+def cmd_export_contract(args: argparse.Namespace) -> int:
+    project_root = _resolve_project_root(getattr(args, "project_root", None))
+    _load_project_env(project_root)
+
+    if args.session_id:
+        _, contract = _load_session_contract(project_root, args.session_id)
+    elif args.contract_path:
+        contract = TaskContract.from_dict(_read_json_path(project_root, args.contract_path))
+    else:
+        raise SystemExit("Either --session-id or --contract-path is required")
+
+    payload = contract.as_dict()
+    if args.output:
+        output_path = (project_root / args.output).resolve()
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
+    print(json.dumps(payload, indent=2, ensure_ascii=False))
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="paper-repro", description="Clinical paper reproduction multi-subagent framework")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -129,7 +292,143 @@ def build_parser() -> argparse.ArgumentParser:
     probe = sub.add_parser("probe-db", help="Probe PostgreSQL connection and visible MIMIC schemas")
     probe.add_argument("--project-root", type=str, default=".")
     probe.set_defaults(func=cmd_probe_db)
+
+    extract = sub.add_parser(
+        "extract-analysis-dataset",
+        help="Build the paper-aligned analysis dataset and missingness report",
+    )
+    extract.add_argument("--project-root", type=str, default=".")
+    extract.add_argument("--output", type=str, default="shared/analysis_dataset.csv")
+    extract.add_argument("--missingness-output", type=str, default="shared/analysis_missingness.json")
+    extract.add_argument("--sepsis-source", choices=["auto", "derived", "icd"], default="auto")
+    extract.set_defaults(func=cmd_extract_analysis_dataset)
+
+    chat = sub.add_parser("chat", help="Build a structured task contract from a paper plus free-form instructions")
+    chat.add_argument("--project-root", type=str, default=".")
+    chat.add_argument("--config", type=str, default="configs/agentic.example.yaml")
+    chat.add_argument("--paper-path", type=str, required=True)
+    chat.add_argument("--instructions", type=str, default="")
+    chat.add_argument("--instructions-file", type=str, default="")
+    chat.add_argument("--session-id", type=str, default="")
+    chat.add_argument("--no-llm", action="store_true")
+    chat.add_argument("--no-prompt", action="store_true")
+    chat.add_argument("--run", action="store_true")
+    chat.add_argument("--dry-run", action="store_true")
+    chat.set_defaults(func=cmd_chat)
+
+    plan = sub.add_parser("plan-task", help="Create and persist a task contract without executing it")
+    plan.add_argument("--project-root", type=str, default=".")
+    plan.add_argument("--config", type=str, default="configs/agentic.example.yaml")
+    plan.add_argument("--paper-path", type=str, required=True)
+    plan.add_argument("--instructions", type=str, default="")
+    plan.add_argument("--instructions-file", type=str, default="")
+    plan.add_argument("--session-id", type=str, default="")
+    plan.add_argument("--no-llm", action="store_true")
+    plan.set_defaults(func=cmd_plan_task)
+
+    run_task = sub.add_parser("run-task", help="Execute a planned task contract through the multi-subagent runner")
+    run_task.add_argument("--project-root", type=str, default=".")
+    run_task.add_argument("--config", type=str, default="configs/agentic.example.yaml")
+    run_task.add_argument("--session-id", type=str, default="")
+    run_task.add_argument("--paper-path", type=str, default="")
+    run_task.add_argument("--instructions", type=str, default="")
+    run_task.add_argument("--instructions-file", type=str, default="")
+    run_task.add_argument("--no-llm", action="store_true")
+    run_task.add_argument("--dry-run", action="store_true")
+    run_task.set_defaults(func=cmd_run_task)
+
+    export = sub.add_parser("export-contract", help="Print or write a persisted task contract")
+    export.add_argument("--project-root", type=str, default=".")
+    export.add_argument("--session-id", type=str, default="")
+    export.add_argument("--contract-path", type=str, default="")
+    export.add_argument("--output", type=str, default="")
+    export.set_defaults(func=cmd_export_contract)
     return parser
+
+
+def _read_instructions(args: argparse.Namespace, project_root: Path) -> str:
+    if getattr(args, "instructions", ""):
+        return str(args.instructions).strip()
+    instructions_file = getattr(args, "instructions_file", "")
+    if instructions_file:
+        path = Path(instructions_file)
+        if not path.is_absolute():
+            path = (project_root / path).resolve()
+        return path.read_text(encoding="utf-8")
+    raise SystemExit("Instructions are required via --instructions or --instructions-file")
+
+
+def _read_json_path(project_root: Path, path_str: str) -> dict:
+    path = Path(path_str)
+    if not path.is_absolute():
+        path = (project_root / path).resolve()
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def _load_session_contract(project_root: Path, session_id: str) -> tuple[SessionState, TaskContract]:
+    runtime = LocalRuntime(project_root=project_root)
+    session = runtime.read_session_state(session_id)
+    contract_payload = _read_json_path(project_root, session.task_contract_path)
+    return session, TaskContract.from_dict(contract_payload)
+
+
+def _plan_task_flow(
+    *,
+    project_root: Path,
+    config: PipelineConfig,
+    paper_path: str,
+    instructions: str,
+    session_id: str,
+    use_llm: bool,
+    interactive: bool,
+) -> tuple[TaskContract, SessionState, dict[str, object]]:
+    task_result = build_task_contract(
+        project_root=project_root,
+        config=config,
+        paper_path=paper_path,
+        instructions=instructions,
+        session_id=session_id,
+        use_llm=use_llm,
+    )
+    contract = task_result.contract
+    missing_high_impact_fields = find_missing_high_impact_fields(contract)
+
+    if interactive and missing_high_impact_fields and sys.stdin.isatty():
+        answers = _prompt_for_missing_fields(missing_high_impact_fields)
+        if answers:
+            contract = normalize_task_contract(apply_follow_up_answers(contract, answers), config=config)
+            missing_high_impact_fields = find_missing_high_impact_fields(contract)
+
+    runner = AgentRunner(project_root=project_root, config=config)
+    session = runner.create_session(
+        contract,
+        paper_path=paper_path,
+        instructions=instructions,
+        session_id=session_id,
+    )
+    return contract, session, {
+        "missing_high_impact_fields": missing_high_impact_fields,
+        "used_llm": task_result.used_llm,
+        "llm_error": task_result.llm_error,
+    }
+
+
+def _prompt_for_missing_fields(missing_fields: list[str]) -> dict[str, str]:
+    prompts = {
+        "exposure_variables": "Exposure variables",
+        "outcome_variables": "Outcome variables",
+        "control_variables": "Control variables",
+        "models": "Models to run",
+        "outputs": "Requested outputs",
+        "cohort_logic": "Cohort logic",
+    }
+    answers: dict[str, str] = {}
+    for field in missing_fields:
+        prompt = prompts.get(field, field)
+        value = input(f"{prompt}: ").strip()
+        if value:
+            answers[field] = value
+    return answers
 
 
 def main() -> int:
