@@ -1,0 +1,119 @@
+from __future__ import annotations
+
+import json
+import os
+import urllib.error
+import urllib.request
+from dataclasses import dataclass
+from typing import Any
+
+from .config import LLMConfig
+
+
+@dataclass
+class LLMResponse:
+    content: str
+    model: str
+    provider: str
+    raw: dict[str, Any]
+
+
+class LLMError(RuntimeError):
+    pass
+
+
+class OpenAICompatibleClient:
+    def __init__(self, config: LLMConfig):
+        self.config = config
+
+    def api_key(self) -> str:
+        return os.getenv(self.config.api_key_env, "").strip()
+
+    def is_enabled(self) -> bool:
+        return bool(self.config.enabled and self.api_key())
+
+    def complete(
+        self,
+        messages: list[dict[str, str]],
+        *,
+        model: str | None = None,
+        temperature: float | None = None,
+        max_tokens: int | None = None,
+    ) -> LLMResponse:
+        if not self.is_enabled():
+            raise LLMError(f"LLM provider {self.config.provider} is not configured via {self.config.api_key_env}")
+
+        payload = {
+            "model": model or self.config.default_model,
+            "messages": messages,
+            "temperature": self.config.temperature if temperature is None else temperature,
+            "max_tokens": self.config.max_tokens if max_tokens is None else max_tokens,
+        }
+        req = urllib.request.Request(
+            url=self.config.base_url.rstrip("/") + "/chat/completions",
+            data=json.dumps(payload).encode("utf-8"),
+            headers={
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {self.api_key()}",
+            },
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=self.config.timeout_seconds) as response:
+                raw = json.loads(response.read().decode("utf-8"))
+        except urllib.error.HTTPError as exc:  # pragma: no cover - network path
+            body = exc.read().decode("utf-8", errors="ignore")
+            raise LLMError(f"LLM HTTP error {exc.code}: {body}") from exc
+        except urllib.error.URLError as exc:  # pragma: no cover - network path
+            raise LLMError(f"LLM transport error: {exc}") from exc
+
+        choices = raw.get("choices", [])
+        if not choices:
+            raise LLMError("LLM returned no choices")
+        message = choices[0].get("message", {})
+        content = str(message.get("content", ""))
+        return LLMResponse(
+            content=content,
+            model=str(raw.get("model", payload["model"])),
+            provider=self.config.provider,
+            raw=raw,
+        )
+
+    def complete_json(
+        self,
+        messages: list[dict[str, str]],
+        *,
+        model: str | None = None,
+        temperature: float | None = None,
+        max_tokens: int | None = None,
+    ) -> tuple[dict[str, Any], LLMResponse]:
+        response = self.complete(messages, model=model, temperature=temperature, max_tokens=max_tokens)
+        try:
+            return _extract_json_object(response.content), response
+        except ValueError as exc:
+            raise LLMError(f"LLM did not return valid JSON: {exc}") from exc
+
+
+def _extract_json_object(text: str) -> dict[str, Any]:
+    text = text.strip()
+    if text.startswith("```"):
+        parts = [part for part in text.split("```") if part.strip()]
+        for part in parts:
+            candidate = part.strip()
+            if candidate.startswith("json"):
+                candidate = candidate[4:].strip()
+            try:
+                loaded = json.loads(candidate)
+                if isinstance(loaded, dict):
+                    return loaded
+            except json.JSONDecodeError:
+                continue
+
+    start = text.find("{")
+    end = text.rfind("}")
+    if start < 0 or end <= start:
+        raise ValueError("no JSON object found")
+    loaded = json.loads(text[start : end + 1])
+    if not isinstance(loaded, dict):
+        raise ValueError("root JSON value is not an object")
+    return loaded

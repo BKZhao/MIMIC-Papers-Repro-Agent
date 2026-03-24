@@ -1,12 +1,20 @@
 from __future__ import annotations
 
+import csv
+import io
+import json
+import math
+import os
+import subprocess
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 from .config import PipelineConfig
 from .contracts import RunSummary, StepResult, StepStatus
+from .paper_contract import build_paper_alignment_contract
 from .runtime import LocalRuntime
+from .stats_analysis import run_stats_analysis
 
 
 class PaperReproPipeline:
@@ -57,53 +65,109 @@ class PaperReproPipeline:
 
         paper_text = paper_path.read_text(encoding="utf-8", errors="ignore")
         title = _extract_title(paper_text) or "unknown"
+        contract = build_paper_alignment_contract()
         methods = {
             "paper_title": title,
             "doi": self.config.run.doi,
             "dataset": self.config.run.dataset,
             "inclusion_criteria": [
-                "adult ICU sepsis patients",
-                "first ICU stay",
-                "TG and glucose available",
+                "Sepsis-3 patients aged >=18 years",
+                "first ICU stay only",
+                "TG and glucose available in the baseline lab window",
             ],
             "exclusion_criteria": [
-                "age < 18",
-                "icu_los < 48h",
+                "ICU stay < 48 hours",
+                "multiple ICU admissions due to sepsis",
+                "insufficient data (for example, missing triglycerides or fasting blood glucose)",
             ],
             "primary_outcomes": ["in_hospital_mortality", "icu_mortality"],
-            "covariates": ["age", "sex", "bmi", "sofa", "sapsii"],
-            "target_metrics": self.config.targets,
-            "notes": "Auto-generated methods skeleton. Replace with parsed details for production runs.",
+            "covariates": [
+                "age",
+                "gender",
+                "height_cm",
+                "weight_kg",
+                "race",
+                "insurance",
+                "marital_status",
+                "white_blood_cell_count",
+                "red_blood_cell_count",
+                "hemoglobin_count",
+                "rdw",
+                "albumin",
+                "chloride",
+                "alanine_aminotransferase",
+                "aspartate_aminotransferase",
+                "sofa_score",
+                "apache_iii_score",
+                "saps_ii_score",
+                "oasis_score",
+                "charlson_score",
+                "gcs_score",
+                "hypertension",
+                "type2_diabetes",
+                "heart_failure",
+                "myocardial_infarction",
+                "malignant_tumor",
+                "chronic_renal_failure",
+                "acute_renal_failure",
+                "stroke",
+                "hyperlipidemia",
+                "copd",
+            ],
+            "target_metrics": self.config.targets or contract.get("metric_targets", []),
+            "paper_alignment_contract": contract,
+            "notes": [
+                "Auto-generated methods contract from papers/MIMIC.md plus paper alignment defaults.",
+                "Use the paper alignment contract as the primary structured target for cohort, KM, Cox, and RCS diagnostics.",
+            ],
         }
         out = self.runtime.write_json("shared/methods.json", methods)
+        contract_out = self.runtime.write_json("shared/paper_alignment_contract.json", contract)
         return StepResult(
             step="paper_parser",
             status=StepStatus.SUCCESS,
             message="Generated methods contract",
-            outputs=[out],
+            outputs=[out, contract_out],
             meta={"dry_run": dry_run, "paper_path": rel_paper_path},
         )
 
     def _run_cohort_agent(self, dry_run: bool) -> StepResult:
         _ = self.runtime.read_json("shared/methods.json")
         expected = self.config.quality_gates.expected_cohort_size
-        row_count = max(expected, 10) if dry_run else expected
-        rows = _make_cohort_rows(row_count)
-        out = self.runtime.write_csv(
-            "shared/cohort.csv",
-            rows=rows,
-            fieldnames=[
-                "subject_id",
-                "hadm_id",
-                "stay_id",
-                "age",
-                "sex",
-                "tyg_index",
-                "tyg_quartile",
-                "hospital_mortality",
-                "icu_mortality",
-            ],
-        )
+        out = "shared/cohort.csv"
+        extra_outputs: list[str] = []
+        if dry_run:
+            row_count = max(expected, 10)
+            rows = _make_cohort_rows(row_count)
+            out = self.runtime.write_csv(
+                out,
+                rows=rows,
+                fieldnames=[
+                    "subject_id",
+                    "hadm_id",
+                    "stay_id",
+                    "age",
+                    "sex",
+                    "tyg_index",
+                    "tyg_quartile",
+                    "hospital_mortality",
+                    "icu_mortality",
+                ],
+            )
+        else:
+            try:
+                row_count = _extract_real_cohort_csv(self.project_root, self.project_root / out)
+            except RuntimeError as exc:
+                return StepResult(
+                    step="cohort_agent",
+                    status=StepStatus.FAILED,
+                    message="Cohort extraction failed",
+                    outputs=[],
+                    meta={"error": str(exc)},
+                )
+            for rel_path in ("shared/cohort_funnel.json", "shared/cohort_alignment.json"):
+                if (self.project_root / rel_path).exists():
+                    extra_outputs.append(rel_path)
 
         gate_ok, lower, upper = _check_cohort_gate(
             actual=row_count,
@@ -115,7 +179,7 @@ class PaperReproPipeline:
                 step="cohort_agent",
                 status=StepStatus.BLOCKED,
                 message="Cohort quality gate failed",
-                outputs=[out],
+                outputs=[out, *extra_outputs],
                 meta={"actual": row_count, "expected": expected, "allowed_range": [lower, upper]},
             )
 
@@ -123,24 +187,49 @@ class PaperReproPipeline:
             step="cohort_agent",
             status=StepStatus.SUCCESS,
             message="Cohort artifact generated",
-            outputs=[out],
+            outputs=[out, *extra_outputs],
             meta={"actual": row_count, "expected": expected, "allowed_range": [lower, upper]},
         )
 
     def _run_stats_agent(self, dry_run: bool) -> StepResult:
-        _ = self.runtime.read_csv("shared/cohort.csv")
+        cohort = self.runtime.read_csv("shared/cohort.csv")
         rows = []
+        metric_values: dict[str, float | None] = {}
+        prep_outputs: list[str] = []
+        if not dry_run:
+            try:
+                prep_outputs = _extract_real_analysis_dataset(self.project_root)
+                stats_run = run_stats_analysis(
+                    project_root=self.project_root,
+                    cohort_rel="shared/cohort.csv",
+                    targets=self.config.targets,
+                )
+            except Exception as exc:
+                return StepResult(
+                    step="stats_agent",
+                    status=StepStatus.FAILED,
+                    message="Stats analysis failed",
+                    outputs=[],
+                    meta={"error": str(exc)},
+                )
+            metric_values = stats_run.metrics
+ 
         for item in self.config.targets:
             metric = str(item.get("metric", "unknown_metric"))
             target = _to_float(item.get("target"), default=0.0)
-            reproduced = target if dry_run else target
+            if dry_run:
+                reproduced = target
+                notes = "dry_run placeholder"
+            else:
+                reproduced = metric_values.get(metric)
+                notes = "wide_dataset_stats" if reproduced is not None else "metric_not_implemented"
             rows.append(
                 {
                     "metric": metric,
                     "target": f"{target:.6f}",
-                    "reproduced": f"{reproduced:.6f}",
-                    "model": "stub_model",
-                    "notes": "dry_run placeholder" if dry_run else "production run",
+                    "reproduced": "" if reproduced is None else f"{reproduced:.6f}",
+                    "model": "stub_model" if dry_run else "stats_workflow",
+                    "notes": notes,
                 }
             )
 
@@ -149,54 +238,62 @@ class PaperReproPipeline:
             rows=rows,
             fieldnames=["metric", "target", "reproduced", "model", "notes"],
         )
+        output_paths = [out]
+        meta: dict[str, Any] = {"metrics": len(rows), "cohort_n": len(cohort)}
+        if not dry_run:
+            output_paths = list(dict.fromkeys([*prep_outputs, *stats_run.outputs, out]))
+            meta["analysis_mode"] = stats_run.analysis_mode
         return StepResult(
             step="stats_agent",
             status=StepStatus.SUCCESS,
             message="Stats artifact generated",
-            outputs=[out],
-            meta={"metrics": len(rows)},
+            outputs=output_paths,
+            meta=meta,
         )
 
     def _run_verify_agent(self, dry_run: bool) -> StepResult:
         rows = self.runtime.read_csv("shared/results_table.csv")
-        details: list[dict[str, Any]] = []
-        pass_count = 0
-        warn_count = 0
-        fail_count = 0
-
-        for row in rows:
-            metric = row["metric"]
-            target = _to_float(row["target"], default=0.0)
-            reproduced = _to_float(row["reproduced"], default=0.0)
-            deviation = _percent_deviation(target, reproduced)
-            status = _grade_deviation(deviation)
-            if status == "pass":
-                pass_count += 1
-            elif status == "warn":
-                warn_count += 1
-            else:
-                fail_count += 1
-            details.append(
-                {
-                    "metric": metric,
-                    "target": target,
-                    "actual": reproduced,
-                    "deviation_percent": round(deviation, 4),
-                    "status": status,
-                }
-            )
-
-        summary = {
-            "total": len(rows),
-            "pass": pass_count,
-            "warn": warn_count,
-            "fail": fail_count,
+        metric_details = _build_metric_verification_details(rows)
+        sections: dict[str, dict[str, Any]] = {
+            "metric_alignment": {
+                "summary": _summarize_status_rows(metric_details),
+                "details": metric_details,
+            }
         }
+
+        diagnostics_path = self.project_root / "shared" / "paper_alignment_diagnostics.json"
+        if diagnostics_path.exists():
+            diagnostics = json.loads(diagnostics_path.read_text(encoding="utf-8"))
+            for section_name in (
+                "cohort_alignment",
+                "baseline_alignment",
+                "metric_alignment",
+                "km_alignment",
+                "rcs_alignment",
+            ):
+                payload = diagnostics.get(section_name)
+                if not isinstance(payload, dict):
+                    continue
+                details = list(payload.get("rows", []))
+                if not details:
+                    continue
+                mapped_name = f"paper_{section_name}"
+                if section_name == "metric_alignment":
+                    mapped_name = "paper_metric_alignment"
+                sections[mapped_name] = {
+                    "summary": dict(payload.get("summary", {})),
+                    "details": details,
+                }
+
+        summary = _summarize_section_summaries(sections)
+        fail_count = int(summary["fail"])
+        warn_count = int(summary["warn"])
         score = int(max(0, 100 - fail_count * 20 - warn_count * 5))
         payload = {
             "summary": summary,
             "score": score,
-            "details": details,
+            "details": metric_details,
+            "sections": sections,
         }
         out = self.runtime.write_json("shared/deviation_table.json", payload)
 
@@ -220,6 +317,8 @@ class PaperReproPipeline:
         methods = self.runtime.read_json("shared/methods.json")
         deviation = self.runtime.read_json("shared/deviation_table.json")
         results = self.runtime.read_csv("shared/results_table.csv")
+        stats_summary = _read_json_if_exists(self.project_root / "shared" / "stats_summary.json")
+        diagnostics = _read_json_if_exists(self.project_root / "shared" / "paper_alignment_diagnostics.json")
 
         status = "reproduced"
         if deviation["summary"]["fail"] > 0:
@@ -243,10 +342,61 @@ class PaperReproPipeline:
             f"- Fail: {deviation['summary']['fail']}",
             f"- Score: {deviation['score']}",
             "",
+            "## Alignment Diagnostics",
+        ]
+        for section_name in (
+            "paper_cohort_alignment",
+            "paper_baseline_alignment",
+            "paper_km_alignment",
+            "paper_rcs_alignment",
+            "paper_metric_alignment",
+        ):
+            section = dict(deviation.get("sections", {})).get(section_name)
+            if not section:
+                continue
+            section_summary = dict(section.get("summary", {}))
+            lines.extend(
+                [
+                    f"### {section_name.replace('_', ' ').title()}",
+                    f"- Pass: {section_summary.get('pass', 0)}",
+                    f"- Warn: {section_summary.get('warn', 0)}",
+                    f"- Fail: {section_summary.get('fail', 0)}",
+                ]
+            )
+            for item in _top_misaligned_rows(list(section.get("details", []))):
+                lines.append(
+                    f"- {item.get('metric')}: target={_format_report_value(item.get('target'))}, "
+                    f"actual={_format_report_value(item.get('actual'))}, status={item.get('status')}"
+                )
+
+        if diagnostics:
+            lines.extend(
+                [
+                    "",
+                    "## Diagnostic Summary",
+                    f"- Baseline mean percent deviation: {_format_report_value(diagnostics.get('summary', {}).get('baseline_mean_percent_deviation'))}",
+                    f"- Metric mean percent deviation: {_format_report_value(diagnostics.get('summary', {}).get('metric_mean_percent_deviation'))}",
+                ]
+            )
+
+        if stats_summary:
+            lines.extend(
+                [
+                    "",
+                    "## Stats Summary",
+                    f"- Analysis mode: {stats_summary.get('analysis_mode', 'unknown')}",
+                    f"- Cohort N used in stats: {stats_summary.get('cohort_n', 'unknown')}",
+                ]
+            )
+
+        lines.extend(
+            [
+                "",
             "## Metric Table",
             "| metric | target | reproduced |",
             "|---|---:|---:|",
-        ]
+            ]
+        )
         for row in results:
             lines.append(f"| {row['metric']} | {row['target']} | {row['reproduced']} |")
 
@@ -291,6 +441,62 @@ def _make_cohort_rows(n: int) -> list[dict[str, Any]]:
     return rows
 
 
+def _extract_real_cohort_csv(project_root: Path, output_path: Path) -> int:
+    script_path = project_root / "scripts" / "build_tyg_sepsis_cohort.py"
+    cmd = [
+        "python3",
+        str(script_path),
+        "--project-root",
+        str(project_root),
+        "--output",
+        str(output_path.relative_to(project_root)),
+        "--funnel-output",
+        "shared/cohort_funnel.json",
+        "--alignment-output",
+        "shared/cohort_alignment.json",
+    ]
+    env = os.environ.copy()
+    completed = subprocess.run(cmd, env=env, text=True, capture_output=True)
+    if completed.returncode != 0:
+        error_text = completed.stderr.strip() or completed.stdout.strip() or "cohort script failed"
+        raise RuntimeError(error_text)
+
+    if not output_path.exists():
+        raise RuntimeError(f"Cohort output not found after script run: {output_path}")
+    return len(_read_csv_rows(output_path))
+
+
+def _extract_real_analysis_dataset(project_root: Path) -> list[str]:
+    script_path = project_root / "scripts" / "build_tyg_analysis_dataset.py"
+    output_rel = "shared/analysis_dataset.csv"
+    missingness_rel = "shared/analysis_missingness.json"
+    cmd = [
+        "python3",
+        str(script_path),
+        "--project-root",
+        str(project_root),
+        "--output",
+        output_rel,
+        "--missingness-output",
+        missingness_rel,
+    ]
+    env = os.environ.copy()
+    completed = subprocess.run(cmd, env=env, text=True, capture_output=True)
+    if completed.returncode != 0:
+        error_text = completed.stderr.strip() or completed.stdout.strip() or "analysis dataset script failed"
+        raise RuntimeError(error_text)
+
+    for rel in (output_rel, missingness_rel):
+        if not (project_root / rel).exists():
+            raise RuntimeError(f"Expected analysis artifact missing after script run: {rel}")
+    return [output_rel, missingness_rel]
+
+
+def _read_csv_rows(path: Path) -> list[dict[str, str]]:
+    with path.open(encoding="utf-8", newline="") as handle:
+        return list(csv.DictReader(handle))
+
+
 def _check_cohort_gate(actual: int, expected: int, tolerance_percent: float) -> tuple[bool, int, int]:
     margin = int(round(expected * (tolerance_percent / 100.0)))
     lower = expected - margin
@@ -303,6 +509,53 @@ def _to_float(value: Any, default: float) -> float:
         return float(value)
     except (TypeError, ValueError):
         return default
+
+
+def _to_optional_float(value: Any) -> float | None:
+    try:
+        if value is None:
+            return None
+        text = str(value).strip()
+        if not text:
+            return None
+        num = float(text)
+        if math.isnan(num) or math.isinf(num):
+            return None
+        return num
+    except (TypeError, ValueError):
+        return None
+
+
+def _risk_ratio_q4_vs_q1(rows: list[dict[str, str]], outcome_key: str) -> float | None:
+    q_stats: dict[str, dict[str, float]] = {
+        "Q1": {"n": 0.0, "events": 0.0},
+        "Q2": {"n": 0.0, "events": 0.0},
+        "Q3": {"n": 0.0, "events": 0.0},
+        "Q4": {"n": 0.0, "events": 0.0},
+    }
+    for row in rows:
+        q = _normalize_quartile(row.get("tyg_quartile", ""))
+        if q not in q_stats:
+            continue
+        q_stats[q]["n"] += 1
+        q_stats[q]["events"] += _to_float(row.get(outcome_key), default=0.0)
+
+    n1 = q_stats["Q1"]["n"]
+    n4 = q_stats["Q4"]["n"]
+    if n1 == 0 or n4 == 0:
+        return None
+    r1 = q_stats["Q1"]["events"] / n1
+    r4 = q_stats["Q4"]["events"] / n4
+    if r1 <= 0:
+        return None
+    return r4 / r1
+
+
+def _normalize_quartile(value: Any) -> str:
+    text = str(value).strip().upper()
+    if text in {"1", "2", "3", "4"}:
+        return f"Q{text}"
+    return text
 
 
 def _percent_deviation(target: float, actual: float) -> float:
@@ -318,3 +571,80 @@ def _grade_deviation(deviation_percent: float) -> str:
         return "warn"
     return "fail"
 
+
+def _build_metric_verification_details(rows: list[dict[str, str]]) -> list[dict[str, Any]]:
+    details: list[dict[str, Any]] = []
+    for row in rows:
+        metric = row["metric"]
+        target = _to_float(row["target"], default=0.0)
+        reproduced = _to_optional_float(row.get("reproduced"))
+        if reproduced is None:
+            details.append(
+                {
+                    "metric": metric,
+                    "target": target,
+                    "actual": None,
+                    "deviation_percent": None,
+                    "status": "missing",
+                }
+            )
+            continue
+        deviation = _percent_deviation(target, reproduced)
+        details.append(
+            {
+                "metric": metric,
+                "target": target,
+                "actual": reproduced,
+                "deviation_percent": round(deviation, 4),
+                "status": _grade_deviation(deviation),
+            }
+        )
+    return details
+
+
+def _summarize_status_rows(rows: list[dict[str, Any]]) -> dict[str, int]:
+    return {
+        "total": len(rows),
+        "pass": sum(1 for row in rows if row.get("status") == "pass"),
+        "warn": sum(1 for row in rows if row.get("status") == "warn"),
+        "fail": sum(1 for row in rows if row.get("status") == "fail"),
+        "missing": sum(1 for row in rows if row.get("status") == "missing"),
+    }
+
+
+def _summarize_section_summaries(sections: dict[str, dict[str, Any]]) -> dict[str, int]:
+    summary = {"total": 0, "pass": 0, "warn": 0, "fail": 0, "missing": 0}
+    for payload in sections.values():
+        section_summary = dict(payload.get("summary", {}))
+        summary["total"] += int(section_summary.get("total", 0))
+        summary["pass"] += int(section_summary.get("pass", 0))
+        summary["warn"] += int(section_summary.get("warn", 0))
+        summary["fail"] += int(section_summary.get("fail", 0))
+        summary["missing"] += int(section_summary.get("missing", 0))
+    return summary
+
+
+def _read_json_if_exists(path: Path) -> dict[str, Any]:
+    if not path.exists():
+        return {}
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def _top_misaligned_rows(rows: list[dict[str, Any]], limit: int = 5) -> list[dict[str, Any]]:
+    filtered = [row for row in rows if row.get("status") in {"fail", "warn", "missing"}]
+    filtered.sort(
+        key=lambda row: (
+            {"fail": 0, "warn": 1, "missing": 2}.get(str(row.get("status")), 3),
+            -(float(row.get("deviation_percent")) if row.get("deviation_percent") is not None else -1.0),
+        )
+    )
+    return filtered[:limit]
+
+
+def _format_report_value(value: Any) -> str:
+    num = _to_optional_float(value)
+    if num is None:
+        return "NA"
+    if abs(num) >= 1000 or abs(num - round(num)) < 1e-9:
+        return f"{num:.0f}"
+    return f"{num:.4f}".rstrip("0").rstrip(".")
