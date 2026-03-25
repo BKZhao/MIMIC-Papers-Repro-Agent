@@ -1,7 +1,3 @@
-<p align="center">
-  <img src="docs/assets/readme-hero.svg" alt="MIMIC Clinical Paper Reproduction Agent banner" width="100%">
-</p>
-
 <h1 align="center">MIMIC Clinical Paper Reproduction Agent</h1>
 
 <p align="center">
