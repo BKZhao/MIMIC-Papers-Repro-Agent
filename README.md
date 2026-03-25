@@ -1,93 +1,254 @@
 # paper-repro-agent
 
-Multi-subagent framework for automated clinical paper reproduction.
+Agent framework for automated reproduction of MIMIC clinical observational papers.
 
-The project now has two execution modes in the same codebase:
+It is designed for one concrete job:
 
-- `deterministic`
-  Stable, paper-aligned pipeline for repeatable runs. The current strongest implementation is the MIMIC-IV TyG sepsis paper workflow.
-- `agentic`
-  Interactive task-definition and multi-subagent execution flow. It turns paper text plus user instructions into a structured task contract, then runs planning or execution against the active dataset adapter.
+- take a paper from `papers/`
+- read the study design from the paper itself
+- connect to MIMIC through PostgreSQL
+- build the cohort and analysis dataset
+- reproduce tables and figures
+- compare reproduced outputs against the paper
 
-The long-term goal is to keep the engine generic while treating individual papers as task presets or verification targets instead of hardcoded pipelines.
+The target integration shape is:
+
+- one external agent for OpenClaw / Lobster: `paper-repro-scientist`
+- one internal exchange object: `TaskContract`
+- one active deterministic backend for supported paper profiles
+
+This repository is now organized around one active path:
+
+1. read the paper from `papers/`
+2. extract study design, variables, models, tables, figures, and target results
+3. translate the paper into a structured `TaskContract` or a supported paper profile
+4. build the MIMIC cohort and analysis dataset
+5. run statistics and export paper-like tables and figures
+6. compare reproduced results against the paper and write a report
+
+The current goal is practical and narrow:
+
+- `MIMIC-IV`
+- `PostgreSQL`
+- clinical observational studies
+- common survival and regression analyses
+- OpenClaw / Lobster integration through one external agent
+
+The right description today is `clinical paper reproduction engine v1`, not a general-purpose paper auto-reproduction platform.
+
+## What This Repository Automates
+
+For supported papers, the repository automates the full paper-to-artifact chain:
+
+1. ingest PDF / Markdown / DOCX paper materials
+2. extract cohort logic, variables, models, target tables, target figures, and reported metrics
+3. build a structured `TaskContract`
+4. detect whether the paper matches a supported preset profile
+5. run deterministic MIMIC cohort extraction and analysis dataset construction
+6. fit the requested models
+7. export paper-like tables and figures
+8. save verification artifacts and a reproduction report
+
+## Automation Workflow
+
+### Step 1. Read the paper first
+
+The system does not start by guessing SQL. It starts from the paper.
+
+Paper intake:
+
+- reads files from `papers/`
+- supports PDF, Markdown, and DOCX
+- attaches only safe companion materials for the same paper
+- avoids contamination from old files in the same folder
+
+Implementation:
+
+- [`src/repro_agent/paper_materials.py`](src/repro_agent/paper_materials.py)
+
+### Step 2. Build a machine-readable study contract
+
+The paper text plus user instructions are converted into a normalized `TaskContract`.
+
+This contract is the central object for:
+
+- cohort logic
+- exposure and outcome variables
+- covariates
+- model families
+- requested outputs
+- verification targets
+
+Implementation:
+
+- [`src/repro_agent/task_builder.py`](src/repro_agent/task_builder.py)
+
+### Step 3. Route to deterministic execution or planning
+
+After contract building, the system decides whether to:
+
+- bridge into a supported deterministic paper profile
+- or stay in planning-first mode and report what is still missing
+
+Implementation:
+
+- [`src/repro_agent/openclaw_bridge.py`](src/repro_agent/openclaw_bridge.py)
+- [`src/repro_agent/preset_registry.py`](src/repro_agent/preset_registry.py)
+- [`src/repro_agent/paper_profiles.py`](src/repro_agent/paper_profiles.py)
+
+### Step 4. Build the cohort and analysis dataset
+
+For supported profiles, the active execution path is profile-driven:
+
+- [`scripts/profiles/build_profile_cohort.py`](scripts/profiles/build_profile_cohort.py)
+- [`scripts/profiles/build_profile_analysis_dataset.py`](scripts/profiles/build_profile_analysis_dataset.py)
+
+These steps connect to MIMIC, apply paper-specific cohort logic, and export the model-ready dataset.
+
+### Step 5. Run statistics and generate paper-like outputs
+
+The current active statistics layer exports:
+
+- baseline tables in CSV and Markdown
+- Cox model tables in CSV and Markdown
+- subgroup analysis tables in CSV and Markdown
+- cohort funnel and missingness summaries in JSON
+- Kaplan-Meier plots in PNG
+- restricted cubic spline plots in PNG
+- ROC plots in PNG
+- subgroup forest plots in PNG
+
+Implementation:
+
+- [`scripts/profiles/run_profile_stats.py`](scripts/profiles/run_profile_stats.py)
+- [`src/repro_agent/profile_stats.py`](src/repro_agent/profile_stats.py)
+
+### Step 6. Verify against the paper
+
+The workflow saves structured artifacts that make alignment debugging possible:
+
+- paper-derived targets
+- cohort alignment summaries
+- stats summaries
+- final report artifacts
+
+This is the main path we use to understand where a reproduction run matches the paper and where it diverges.
+
+## LLM vs Deterministic Execution
+
+The intended split is strict:
+
+- LLM is used for paper understanding, field extraction, and contract completion
+- deterministic Python and SQL are used for database access, cohort building, statistics, and figure generation
+
+The repository should not use LLMs to fabricate cohort logic, execute statistics, or invent results.
+
+## What A Run Produces
+
+For a successful supported run, expected artifacts include:
+
+- cohort CSV
+- cohort funnel JSON
+- analysis dataset CSV
+- missingness JSON
+- baseline table CSV and Markdown
+- Cox results table CSV and Markdown
+- subgroup analysis table CSV and Markdown
+- Kaplan-Meier, RCS, ROC, and subgroup forest figures
+- stats summary JSON
+- reproduction report Markdown
+
+Typical output roots:
+
+- `shared/`
+- `results/`
+- `shared/runs/<paper_profile>/<run_label>/`
+- `results/runs/<paper_profile>/<run_label>/`
+- `shared/sessions/<session_id>/`
 
 ## Core concepts
 
 - `TaskContract`
-  The unified task definition for cohort logic, variables, models, outputs, and verification targets.
+  The main exchange object for cohort logic, variables, models, outputs, and verification targets.
+- `PaperExecutionProfile`
+  A deterministic paper-specific execution contract for supported studies.
 - `AgentRunner`
-  The true multi-subagent executor for `paper_parser_agent`, `study_design_agent`, `cohort_agent`, `feature_agent`, `stats_agent`, `figure_agent`, `verify_agent`, `report_agent`, and `git_update_agent`.
-- `DatasetAdapter`
-  The boundary where generic study intent is translated into dataset-specific semantics. `MIMIC-IV` is the first implemented adapter.
-- Artifact-first workflow
-  Intermediate and final outputs are written explicitly to `shared/`, `results/`, and `shared/sessions/<session_id>/`.
+  The internal executor that persists session state, routes enabled skills, and bridges supported tasks into deterministic execution.
+- `OpenClaw Bridge`
+  The stable external interface for `plan_task`, `run_task`, `export_contract`, `run_preset_pipeline`, and `extract_analysis_dataset`.
 
 ## Current status
 
-What already works well:
+Already working well:
 
-- Real `deterministic` execution for the MIMIC-IV TyG sepsis reproduction workflow
-- SQL-backed cohort extraction and analysis dataset expansion for the current paper preset
-- Python-based baseline table, KM, Cox, RCS, subgroup analysis, and alignment diagnostics
-- `agentic` task planning via `TaskContract`
-- Session persistence, artifact tracking, and agent-run logging
-- SiliconFlow-compatible LLM routing configuration via environment variables
+- PDF / Markdown / DOCX paper intake
+- LLM-backed `TaskContract` construction with heuristic fallback
+- preset registry and semantic mapping scaffold
+- profile-driven MIMIC cohort extraction and analysis dataset construction
+- baseline table, KM, Cox, RCS, ROC, subgroup, and alignment outputs for supported profiles
+- OpenClaw-facing SOUL file, skills, and bridge contracts
 
-What is still in progress:
+Still in progress:
 
-- Non-preset MIMIC studies are already plannable, but not yet fully executable end to end
-- `papers/table.md` and `papers/si.docx` are read as paper materials, but they are not yet fully converted into machine-verifiable alignment truth
-- Skills are modeled and routed, but some wrapper skills still act as architectural placeholders rather than fully independent runtime tools
+- non-preset MIMIC papers are plannable but not yet fully executable end to end
+- table and supplement parsing still need stronger normalization into machine-verifiable targets
+- generic cohort compilation from arbitrary paper text is not fully automatic yet
+- some study families still need broader deterministic coverage
 
 ## Execution modes
 
-### 1. Deterministic mode
+### Deterministic profile path
 
-Use this for the current stable paper reproduction flow.
+Use this when a paper is already represented as a supported execution profile.
 
-Key config:
+Key assets:
 
-- [`configs/pipeline.example.yaml`](configs/pipeline.example.yaml)
+- [`src/repro_agent/paper_profiles.py`](src/repro_agent/paper_profiles.py)
+- [`scripts/profiles/build_profile_cohort.py`](scripts/profiles/build_profile_cohort.py)
+- [`scripts/profiles/build_profile_analysis_dataset.py`](scripts/profiles/build_profile_analysis_dataset.py)
+- [`scripts/profiles/run_profile_stats.py`](scripts/profiles/run_profile_stats.py)
 
-Main path:
-
-1. parse paper metadata and build a paper alignment contract
-2. build the cohort
-3. expand the analysis dataset
-4. run statistics and figure generation
-5. verify against paper targets
-6. write the reproduction report
-
-Typical command:
+Typical commands:
 
 ```bash
-paper-repro dry-run --config configs/pipeline.example.yaml
+python3 scripts/profiles/build_profile_cohort.py --help
+python3 scripts/profiles/build_profile_analysis_dataset.py --help
+python3 scripts/profiles/run_profile_stats.py --help
 ```
 
-### 2. Agentic mode
+Typical run pattern:
 
-Use this for interactive study design and future generic paper workflows.
+```bash
+python3 scripts/profiles/build_profile_cohort.py \
+  --profile mimic_nlr_sepsis_elderly
 
-Key config:
+python3 scripts/profiles/build_profile_analysis_dataset.py \
+  --profile mimic_nlr_sepsis_elderly
+
+python3 scripts/profiles/run_profile_stats.py \
+  --profile mimic_nlr_sepsis_elderly
+```
+
+### Agentic / OpenClaw path
+
+Use this when the system needs to read a paper, build a contract, and decide whether the task is executable now or should remain planning-first.
+
+Key assets:
 
 - [`configs/agentic.example.yaml`](configs/agentic.example.yaml)
-
-Main path:
-
-1. read paper materials and free-form instructions
-2. build a `TaskContract`
-3. persist session artifacts under `shared/sessions/<session_id>/`
-4. run the multi-subagent executor
-5. if the contract matches a built-in preset, bridge into the deterministic backend
-6. otherwise emit planning blueprints for cohort, features, models, figures, and verification
+- [`configs/openclaw.agentic.yaml`](configs/openclaw.agentic.yaml)
+- [`configs/openclaw.mimic-real-run.yaml`](configs/openclaw.mimic-real-run.yaml)
+- [`configs/mimic_variable_semantics.yaml`](configs/mimic_variable_semantics.yaml)
+- [`openclaw/SOUL.MD`](openclaw/SOUL.MD)
+- [`openclaw/skills/skills_manifest.yaml`](openclaw/skills/skills_manifest.yaml)
 
 Typical commands:
 
 ```bash
 paper-repro plan-task \
   --config configs/agentic.example.yaml \
-  --paper-path papers/MIMIC.md \
-  --instructions "自变量: TyG index; 因变量: in-hospital mortality, ICU mortality; 模型: Cox, Kaplan-Meier, RCS"
+  --paper-path papers/your-paper.pdf \
+  --instructions "Read the paper and extract the cohort, exposure, outcome, models, tables, figures, and requested outputs."
 ```
 
 ```bash
@@ -96,59 +257,67 @@ paper-repro run-task \
   --session-id <session_id>
 ```
 
+Recommended automation pattern for a new paper:
+
+1. `plan-task`
+2. inspect `missing_high_impact_fields`
+3. inspect `execution_supported`
+4. if it is a supported preset, run the deterministic path
+5. otherwise keep the result as planning output, not fake execution
+
+## OpenClaw and Lobster
+
+The repository exposes one external research agent:
+
+- agent name: `paper-repro-scientist`
+- soul file: [`openclaw/SOUL.MD`](openclaw/SOUL.MD)
+- bridge module: [`src/repro_agent/openclaw_bridge.py`](src/repro_agent/openclaw_bridge.py)
+
+Recommended docs:
+
+- [`docs/architecture.md`](docs/architecture.md)
+- [`docs/openclaw_integration.md`](docs/openclaw_integration.md)
+- [`docs/lobster_agent_contract.md`](docs/lobster_agent_contract.md)
+- [`docs/skills_map.md`](docs/skills_map.md)
+
+Recommended entrypoint contract for Lobster:
+
+1. upload or reference the paper
+2. call `plan_task`
+3. read the returned `TaskContract`
+4. if executable, call `run_task`
+5. read artifacts from `shared/` and `results/`
+
 ## Project layout
 
 ```text
 paper-repro-agent/
 ├── configs/
-│   ├── pipeline.example.yaml
-│   └── agentic.example.yaml
 ├── docs/
 │   ├── architecture.md
-│   ├── security_notes.md
-│   └── skills_map.md
+│   ├── openclaw_integration.md
+│   ├── lobster_agent_contract.md
+│   ├── skills_map.md
+│   └── reference/
+├── openclaw/
+│   ├── SOUL.MD
+│   └── skills/
 ├── papers/
-│   ├── MIMIC.md
-│   ├── paper.md
-│   ├── table.md
-│   └── si.docx
 ├── scripts/
-│   ├── build_tyg_sepsis_cohort.py
-│   ├── build_tyg_analysis_dataset.py
+│   ├── profiles/
+│   ├── legacy/
 │   ├── bootstrap_skills.sh
 │   └── git_update.sh
 ├── shared/
-│   ├── *.csv / *.json intermediate artifacts
-│   └── sessions/<session_id>/ agentic task/session artifacts
 ├── results/
-│   ├── reproduction_report.md
-│   ├── *.png figures
-│   └── *.jsonl run logs
 └── src/repro_agent/
-    ├── cli.py
-    ├── contracts.py
-    ├── config.py
-    ├── runtime.py
-    ├── pipeline.py
-    ├── task_builder.py
-    ├── agent_runner.py
-    ├── dataset_adapters.py
-    ├── stats_analysis.py
-    ├── paper_contract.py
-    ├── paper_materials.py
-    ├── skills_registry.py
-    ├── llm.py
-    └── db/connectors.py
 ```
 
-Artifact path conventions:
+Notes:
 
-- `shared/`
-  Structured intermediate artifacts used for downstream steps
-- `results/`
-  Final human-facing outputs and run logs
-- `shared/sessions/<session_id>/`
-  Agentic planning and execution artifacts tied to one task session
+- `scripts/profiles/` is the active deterministic execution path.
+- `scripts/legacy/` is compatibility-only and should not drive new design work.
+- `docs/reference/` is historical context, not the source of truth for the current architecture.
 
 ## Quick start
 
@@ -157,8 +326,6 @@ Artifact path conventions:
 ```bash
 cp .env.example .env
 ```
-
-`paper-repro` automatically loads `.env` from the project root.
 
 2. Install the package:
 
@@ -172,29 +339,36 @@ pip install -e .
 bash scripts/bootstrap_skills.sh
 ```
 
-4. Validate database env wiring:
+4. Validate database wiring:
 
 ```bash
 paper-repro validate-env
 paper-repro probe-db
 ```
 
-5. Run a deterministic dry run:
-
-```bash
-paper-repro dry-run --config configs/pipeline.example.yaml
-```
-
-6. Build an agentic task contract:
+5. Build a task contract from a paper:
 
 ```bash
 paper-repro plan-task \
   --config configs/agentic.example.yaml \
-  --paper-path papers/paper.md \
-  --instructions "Describe the cohort, variables, models, and outputs you want"
+  --paper-path papers/your-paper.pdf \
+  --instructions "Read the paper and build a TaskContract for reproduction"
 ```
 
-7. Publish updates with the fixed git helper:
+6. Inspect the OpenClaw bridge:
+
+```bash
+paper-repro describe-openclaw
+paper-repro describe-skills
+```
+
+7. Run a supported preset pipeline:
+
+```bash
+paper-repro run-preset-pipeline --config configs/pipeline.example.yaml
+```
+
+8. Publish updates with the fixed git helper:
 
 ```bash
 bash scripts/git_update.sh "feat: your change summary"
@@ -210,13 +384,17 @@ bash scripts/git_update.sh "feat: your change summary"
 Current env inputs include:
 
 - `MIMIC_PG_*`
-- `SILICONFLOW_API_KEY`
+- `OPENAI_API_KEY` or `SILICONFLOW_API_KEY`
+- optional `LLM_API_KEY_ENV`
 - optional `LLM_BASE_URL`
 - optional `LLM_DEFAULT_MODEL`
+- optional `LLM_PROVIDER`
 
 ## Skills
 
 External scientific skills are tracked in [`docs/skills_map.md`](docs/skills_map.md).
+
+OpenClaw-facing local skill docs live under [`openclaw/skills/`](openclaw/skills/).
 
 Current external skill targets:
 
@@ -224,6 +402,23 @@ Current external skill targets:
 - `clinicaltrials-database`
 - `clinical-reports`
 - `statistical-analysis`
+
+## Current Boundaries
+
+What works now:
+
+- MIMIC-first paper intake and task planning
+- profile-driven cohort and dataset execution for supported papers
+- paper-like table and figure export
+- artifact-first reporting and alignment tracking
+- OpenClaw / Lobster integration scaffold through one external agent
+
+What does not yet fully work:
+
+- arbitrary new MIMIC papers compiled automatically into executable SQL
+- fully automatic variable mapping for every paper
+- complete non-preset end-to-end execution
+- broad support for every clinical study family
 
 ## Contributors
 
