@@ -1,74 +1,62 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1400 520" role="img" aria-labelledby="title desc">
-  <title id="title">MIMIC Clinical Paper Reproduction Agent</title>
-  <desc id="desc">Banner illustration for the README of a MIMIC clinical paper reproduction agent framework.</desc>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1400 300" role="img" aria-labelledby="title desc">
+  <title id="title">MIMIC Clinical Paper Reproduction Agent banner</title>
+  <desc id="desc">Minimal decorative banner for the README.</desc>
   <defs>
     <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
       <stop offset="0%" stop-color="#0f172a"/>
-      <stop offset="45%" stop-color="#0f766e"/>
+      <stop offset="50%" stop-color="#0f766e"/>
       <stop offset="100%" stop-color="#1d4ed8"/>
     </linearGradient>
-    <linearGradient id="card" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.16"/>
-      <stop offset="100%" stop-color="#ffffff" stop-opacity="0.06"/>
+    <linearGradient id="cardA" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.28"/>
+      <stop offset="100%" stop-color="#ffffff" stop-opacity="0.10"/>
+    </linearGradient>
+    <linearGradient id="cardB" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#dbeafe" stop-opacity="0.45"/>
+      <stop offset="100%" stop-color="#bfdbfe" stop-opacity="0.18"/>
+    </linearGradient>
+    <linearGradient id="cardC" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ccfbf1" stop-opacity="0.42"/>
+      <stop offset="100%" stop-color="#99f6e4" stop-opacity="0.16"/>
     </linearGradient>
     <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
-      <feDropShadow dx="0" dy="18" stdDeviation="20" flood-color="#020617" flood-opacity="0.30"/>
+      <feDropShadow dx="0" dy="16" stdDeviation="20" flood-color="#020617" flood-opacity="0.25"/>
     </filter>
-    <marker id="arrow" markerWidth="12" markerHeight="12" refX="8" refY="6" orient="auto">
-      <path d="M0,0 L12,6 L0,12 z" fill="#cbd5e1"/>
-    </marker>
   </defs>
 
-  <rect width="1400" height="520" fill="url(#bg)"/>
-  <circle cx="1210" cy="90" r="180" fill="#67e8f9" opacity="0.10"/>
-  <circle cx="120" cy="430" r="160" fill="#e0f2fe" opacity="0.08"/>
-  <circle cx="1080" cy="430" r="220" fill="#a78bfa" opacity="0.08"/>
+  <rect width="1400" height="300" fill="url(#bg)"/>
 
-  <rect x="48" y="48" width="1304" height="424" rx="34" fill="url(#card)" stroke="#e2e8f0" stroke-opacity="0.18" filter="url(#shadow)"/>
+  <circle cx="120" cy="70" r="120" fill="#ffffff" opacity="0.05"/>
+  <circle cx="1280" cy="50" r="140" fill="#67e8f9" opacity="0.08"/>
+  <circle cx="1190" cy="270" r="180" fill="#c4b5fd" opacity="0.08"/>
 
-  <text x="86" y="110" fill="#bae6fd" font-size="22" font-family="Segoe UI, Arial, sans-serif" font-weight="700" letter-spacing="1.2">MIMIC CLINICAL PAPER REPRODUCTION</text>
-  <text x="86" y="184" fill="#ffffff" font-size="52" font-family="Segoe UI, Arial, sans-serif" font-weight="800">Agent Framework for Paper-to-Artifact Reproduction</text>
-  <text x="86" y="232" fill="#dbeafe" font-size="24" font-family="Segoe UI, Arial, sans-serif">Read the paper first. Build a TaskContract. Execute SQL and statistics deterministically.</text>
-  <text x="86" y="268" fill="#dbeafe" font-size="24" font-family="Segoe UI, Arial, sans-serif">Export tables, figures, verification diagnostics, and OpenClaw-ready artifacts.</text>
+  <rect x="84" y="82" width="330" height="136" rx="30" fill="url(#cardA)" stroke="#e2e8f0" stroke-opacity="0.18" filter="url(#shadow)"/>
+  <rect x="536" y="56" width="330" height="188" rx="30" fill="url(#cardB)" stroke="#dbeafe" stroke-opacity="0.22" filter="url(#shadow)"/>
+  <rect x="986" y="92" width="330" height="124" rx="30" fill="url(#cardC)" stroke="#ccfbf1" stroke-opacity="0.22" filter="url(#shadow)"/>
 
-  <g font-family="Segoe UI, Arial, sans-serif" font-size="18" font-weight="700">
-    <rect x="86" y="314" width="144" height="40" rx="20" fill="#082f49" stroke="#7dd3fc" stroke-opacity="0.55"/>
-    <text x="158" y="340" text-anchor="middle" fill="#e0f2fe">Paper-first</text>
-
-    <rect x="246" y="314" width="126" height="40" rx="20" fill="#083344" stroke="#5eead4" stroke-opacity="0.55"/>
-    <text x="309" y="340" text-anchor="middle" fill="#ccfbf1">MIMIC-IV</text>
-
-    <rect x="388" y="314" width="148" height="40" rx="20" fill="#172554" stroke="#93c5fd" stroke-opacity="0.55"/>
-    <text x="462" y="340" text-anchor="middle" fill="#dbeafe">TaskContract</text>
-
-    <rect x="552" y="314" width="148" height="40" rx="20" fill="#3b0764" stroke="#c4b5fd" stroke-opacity="0.55"/>
-    <text x="626" y="340" text-anchor="middle" fill="#ede9fe">Cox / KM / RCS</text>
-
-    <rect x="716" y="314" width="174" height="40" rx="20" fill="#0f172a" stroke="#cbd5e1" stroke-opacity="0.45"/>
-    <text x="803" y="340" text-anchor="middle" fill="#f8fafc">OpenClaw / Lobster</text>
+  <g transform="translate(128 116)">
+    <rect x="0" y="0" width="92" height="14" rx="7" fill="#e0f2fe" opacity="0.88"/>
+    <rect x="0" y="28" width="214" height="12" rx="6" fill="#e0f2fe" opacity="0.60"/>
+    <rect x="0" y="52" width="178" height="12" rx="6" fill="#e0f2fe" opacity="0.42"/>
+    <rect x="0" y="90" width="64" height="18" rx="9" fill="#7dd3fc" opacity="0.75"/>
+    <rect x="76" y="90" width="72" height="18" rx="9" fill="#5eead4" opacity="0.75"/>
   </g>
 
-  <g transform="translate(958 112)" filter="url(#shadow)">
-    <rect x="12" y="12" width="146" height="96" rx="22" fill="#e0f2fe" fill-opacity="0.98"/>
-    <text x="85" y="50" text-anchor="middle" fill="#1e3a8a" font-size="18" font-family="Segoe UI, Arial, sans-serif" font-weight="800">Paper</text>
-    <text x="85" y="74" text-anchor="middle" fill="#2563eb" font-size="14" font-family="Segoe UI, Arial, sans-serif">PDF / MD / DOCX</text>
-    <path d="M54 28 H116 V34 H54z" fill="#60a5fa" opacity="0.55"/>
-    <path d="M42 38 H128 V42 H42z" fill="#93c5fd" opacity="0.75"/>
+  <g transform="translate(584 94)">
+    <rect x="0" y="0" width="92" height="12" rx="6" fill="#ffffff" opacity="0.70"/>
+    <rect x="0" y="28" width="236" height="12" rx="6" fill="#ffffff" opacity="0.46"/>
+    <rect x="0" y="56" width="236" height="84" rx="20" fill="#ffffff" opacity="0.24"/>
+    <path d="M34 112 L80 96 L122 102 L168 76 L216 86" fill="none" stroke="#ffffff" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" opacity="0.85"/>
+    <circle cx="80" cy="96" r="6" fill="#ffffff"/>
+    <circle cx="122" cy="102" r="6" fill="#ffffff"/>
+    <circle cx="168" cy="76" r="6" fill="#ffffff"/>
+  </g>
 
-    <rect x="182" y="84" width="146" height="96" rx="22" fill="#ccfbf1" fill-opacity="0.98"/>
-    <text x="255" y="122" text-anchor="middle" fill="#115e59" font-size="18" font-family="Segoe UI, Arial, sans-serif" font-weight="800">MIMIC</text>
-    <text x="255" y="146" text-anchor="middle" fill="#0f766e" font-size="14" font-family="Segoe UI, Arial, sans-serif">SQL / cohort / dataset</text>
-    <rect x="214" y="98" width="82" height="10" rx="5" fill="#14b8a6" opacity="0.55"/>
-    <rect x="214" y="112" width="92" height="10" rx="5" fill="#5eead4" opacity="0.75"/>
-
-    <rect x="82" y="206" width="176" height="104" rx="24" fill="#ede9fe" fill-opacity="0.98"/>
-    <text x="170" y="248" text-anchor="middle" fill="#5b21b6" font-size="20" font-family="Segoe UI, Arial, sans-serif" font-weight="800">Artifacts</text>
-    <text x="170" y="274" text-anchor="middle" fill="#7c3aed" font-size="14" font-family="Segoe UI, Arial, sans-serif">tables / plots / report</text>
-    <rect x="112" y="286" width="30" height="10" rx="5" fill="#a78bfa"/>
-    <rect x="150" y="280" width="30" height="16" rx="5" fill="#c4b5fd"/>
-    <rect x="188" y="270" width="30" height="26" rx="5" fill="#8b5cf6"/>
-
-    <path d="M158 60 C182 72, 196 78, 210 92" fill="none" stroke="#cbd5e1" stroke-width="4" stroke-linecap="round" marker-end="url(#arrow)"/>
-    <path d="M242 182 C232 194, 224 204, 214 214" fill="none" stroke="#cbd5e1" stroke-width="4" stroke-linecap="round" marker-end="url(#arrow)"/>
+  <g transform="translate(1030 124)">
+    <rect x="0" y="0" width="84" height="12" rx="6" fill="#ecfeff" opacity="0.76"/>
+    <rect x="0" y="28" width="206" height="12" rx="6" fill="#ecfeff" opacity="0.44"/>
+    <rect x="0" y="62" width="58" height="40" rx="14" fill="#ecfeff" opacity="0.30"/>
+    <rect x="74" y="50" width="58" height="52" rx="14" fill="#ecfeff" opacity="0.38"/>
+    <rect x="148" y="36" width="58" height="66" rx="14" fill="#ecfeff" opacity="0.50"/>
   </g>
 </svg>
