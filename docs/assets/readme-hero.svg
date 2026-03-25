@@ -14,6 +14,9 @@
     <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
       <feDropShadow dx="0" dy="18" stdDeviation="20" flood-color="#020617" flood-opacity="0.30"/>
     </filter>
+    <marker id="arrow" markerWidth="12" markerHeight="12" refX="8" refY="6" orient="auto">
+      <path d="M0,0 L12,6 L0,12 z" fill="#cbd5e1"/>
+    </marker>
   </defs>
 
   <rect width="1400" height="520" fill="url(#bg)"/>
@@ -45,32 +48,27 @@
     <text x="803" y="340" text-anchor="middle" fill="#f8fafc">OpenClaw / Lobster</text>
   </g>
 
-  <g transform="translate(920 108)" filter="url(#shadow)">
-    <rect x="0" y="0" width="352" height="256" rx="26" fill="#f8fafc" fill-opacity="0.97"/>
-    <text x="28" y="42" fill="#0f172a" font-size="21" font-family="Segoe UI, Arial, sans-serif" font-weight="800">Framework Snapshot</text>
+  <g transform="translate(958 112)" filter="url(#shadow)">
+    <rect x="12" y="12" width="146" height="96" rx="22" fill="#e0f2fe" fill-opacity="0.98"/>
+    <text x="85" y="50" text-anchor="middle" fill="#1e3a8a" font-size="18" font-family="Segoe UI, Arial, sans-serif" font-weight="800">Paper</text>
+    <text x="85" y="74" text-anchor="middle" fill="#2563eb" font-size="14" font-family="Segoe UI, Arial, sans-serif">PDF / MD / DOCX</text>
+    <path d="M54 28 H116 V34 H54z" fill="#60a5fa" opacity="0.55"/>
+    <path d="M42 38 H128 V42 H42z" fill="#93c5fd" opacity="0.75"/>
 
-    <rect x="28" y="64" width="128" height="66" rx="18" fill="#dbeafe"/>
-    <text x="92" y="92" text-anchor="middle" fill="#1e3a8a" font-size="16" font-family="Segoe UI, Arial, sans-serif" font-weight="700">Paper Intake</text>
-    <text x="92" y="114" text-anchor="middle" fill="#1e40af" font-size="13" font-family="Segoe UI, Arial, sans-serif">PDF / MD / DOCX</text>
+    <rect x="182" y="84" width="146" height="96" rx="22" fill="#ccfbf1" fill-opacity="0.98"/>
+    <text x="255" y="122" text-anchor="middle" fill="#115e59" font-size="18" font-family="Segoe UI, Arial, sans-serif" font-weight="800">MIMIC</text>
+    <text x="255" y="146" text-anchor="middle" fill="#0f766e" font-size="14" font-family="Segoe UI, Arial, sans-serif">SQL / cohort / dataset</text>
+    <rect x="214" y="98" width="82" height="10" rx="5" fill="#14b8a6" opacity="0.55"/>
+    <rect x="214" y="112" width="92" height="10" rx="5" fill="#5eead4" opacity="0.75"/>
 
-    <rect x="196" y="64" width="128" height="66" rx="18" fill="#ccfbf1"/>
-    <text x="260" y="92" text-anchor="middle" fill="#115e59" font-size="16" font-family="Segoe UI, Arial, sans-serif" font-weight="700">Task Builder</text>
-    <text x="260" y="114" text-anchor="middle" fill="#0f766e" font-size="13" font-family="Segoe UI, Arial, sans-serif">study design</text>
+    <rect x="82" y="206" width="176" height="104" rx="24" fill="#ede9fe" fill-opacity="0.98"/>
+    <text x="170" y="248" text-anchor="middle" fill="#5b21b6" font-size="20" font-family="Segoe UI, Arial, sans-serif" font-weight="800">Artifacts</text>
+    <text x="170" y="274" text-anchor="middle" fill="#7c3aed" font-size="14" font-family="Segoe UI, Arial, sans-serif">tables / plots / report</text>
+    <rect x="112" y="286" width="30" height="10" rx="5" fill="#a78bfa"/>
+    <rect x="150" y="280" width="30" height="16" rx="5" fill="#c4b5fd"/>
+    <rect x="188" y="270" width="30" height="26" rx="5" fill="#8b5cf6"/>
 
-    <path d="M156 97 H188" stroke="#64748b" stroke-width="4" stroke-linecap="round"/>
-    <path d="M181 90 L193 97 L181 104" fill="none" stroke="#64748b" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
-
-    <rect x="28" y="162" width="128" height="66" rx="18" fill="#fef3c7"/>
-    <text x="92" y="190" text-anchor="middle" fill="#92400e" font-size="16" font-family="Segoe UI, Arial, sans-serif" font-weight="700">Cohort SQL</text>
-    <text x="92" y="212" text-anchor="middle" fill="#b45309" font-size="13" font-family="Segoe UI, Arial, sans-serif">profile-driven</text>
-
-    <rect x="196" y="162" width="128" height="66" rx="18" fill="#ede9fe"/>
-    <text x="260" y="190" text-anchor="middle" fill="#5b21b6" font-size="16" font-family="Segoe UI, Arial, sans-serif" font-weight="700">Stats + Figures</text>
-    <text x="260" y="212" text-anchor="middle" fill="#7c3aed" font-size="13" font-family="Segoe UI, Arial, sans-serif">tables / plots</text>
-
-    <path d="M92 130 V150" stroke="#64748b" stroke-width="4" stroke-linecap="round"/>
-    <path d="M260 130 V150" stroke="#64748b" stroke-width="4" stroke-linecap="round"/>
-    <path d="M156 195 H188" stroke="#64748b" stroke-width="4" stroke-linecap="round"/>
-    <path d="M181 188 L193 195 L181 202" fill="none" stroke="#64748b" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M158 60 C182 72, 196 78, 210 92" fill="none" stroke="#cbd5e1" stroke-width="4" stroke-linecap="round" marker-end="url(#arrow)"/>
+    <path d="M242 182 C232 194, 224 204, 214 214" fill="none" stroke="#cbd5e1" stroke-width="4" stroke-linecap="round" marker-end="url(#arrow)"/>
   </g>
 </svg>

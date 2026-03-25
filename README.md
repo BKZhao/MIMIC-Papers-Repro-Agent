@@ -18,6 +18,7 @@
 
 <p align="center">
   <a href="#-automation-workflow"><strong>Workflow</strong></a> ·
+  <a href="#-outputs-preview"><strong>Outputs</strong></a> ·
   <a href="#-execution-modes"><strong>Execution Modes</strong></a> ·
   <a href="#-quick-start"><strong>Quick Start</strong></a> ·
   <a href="#-openclaw-and-lobster"><strong>OpenClaw</strong></a>
@@ -65,6 +66,12 @@ The right description today is `clinical paper reproduction engine v1`, not a ge
 
 <p align="center">
   <img src="docs/assets/readme-framework.svg" alt="Framework overview diagram for the MIMIC clinical paper reproduction agent" width="100%">
+</p>
+
+## 🖼️ Outputs Preview
+
+<p align="center">
+  <img src="docs/assets/readme-outputs.svg" alt="Preview collage of tables, Kaplan-Meier curves, forest plots, and markdown reports" width="100%">
 </p>
 
 ## ✨ What This Repository Automates

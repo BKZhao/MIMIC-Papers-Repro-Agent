@@ -1,0 +1,124 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1400 860" role="img" aria-labelledby="title desc">
+  <title id="title">Outputs Preview</title>
+  <desc id="desc">Preview collage of tables, Kaplan-Meier curves, forest plots, and markdown reports for the README.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#f8fafc"/>
+      <stop offset="100%" stop-color="#eef2ff"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="12" stdDeviation="12" flood-color="#94a3b8" flood-opacity="0.22"/>
+    </filter>
+  </defs>
+
+  <rect width="1400" height="860" fill="url(#bg)"/>
+  <text x="700" y="72" text-anchor="middle" fill="#0f172a" font-size="36" font-family="Segoe UI, Arial, sans-serif" font-weight="800">Outputs Preview</text>
+  <text x="700" y="108" text-anchor="middle" fill="#475569" font-size="18" font-family="Segoe UI, Arial, sans-serif">Paper-like artifacts exported by the deterministic workflow</text>
+
+  <g transform="translate(84 156)" filter="url(#shadow)">
+    <rect x="0" y="0" width="560" height="286" rx="28" fill="#ffffff" stroke="#cbd5e1"/>
+    <text x="30" y="42" fill="#0f172a" font-size="24" font-family="Segoe UI, Arial, sans-serif" font-weight="800">Baseline Table</text>
+    <text x="30" y="68" fill="#475569" font-size="15" font-family="Segoe UI, Arial, sans-serif">CSV / Markdown export</text>
+    <rect x="30" y="92" width="500" height="20" rx="10" fill="#e2e8f0"/>
+    <rect x="30" y="128" width="500" height="18" rx="9" fill="#f1f5f9"/>
+    <rect x="30" y="156" width="500" height="18" rx="9" fill="#f8fafc"/>
+    <rect x="30" y="184" width="500" height="18" rx="9" fill="#f1f5f9"/>
+    <rect x="30" y="212" width="500" height="18" rx="9" fill="#f8fafc"/>
+    <rect x="30" y="240" width="500" height="18" rx="9" fill="#f1f5f9"/>
+    <g font-family="Segoe UI, Arial, sans-serif" font-size="13" font-weight="700">
+      <text x="54" y="106" fill="#0f172a">variable</text>
+      <text x="166" y="106" fill="#0f172a">overall</text>
+      <text x="258" y="106" fill="#0f172a">Q1</text>
+      <text x="322" y="106" fill="#0f172a">Q2</text>
+      <text x="386" y="106" fill="#0f172a">Q3</text>
+      <text x="450" y="106" fill="#0f172a">Q4</text>
+    </g>
+    <g font-family="Segoe UI, Arial, sans-serif" font-size="13">
+      <text x="54" y="141" fill="#334155">Age</text>
+      <text x="166" y="141" fill="#334155">75.0 (70.0, 82.0)</text>
+      <text x="258" y="141" fill="#334155">75.0</text>
+      <text x="322" y="141" fill="#334155">75.0</text>
+      <text x="386" y="141" fill="#334155">76.0</text>
+      <text x="450" y="141" fill="#334155">76.0</text>
+
+      <text x="54" y="169" fill="#334155">WBC</text>
+      <text x="166" y="169" fill="#334155">12.1 (8.5, 16.8)</text>
+      <text x="258" y="169" fill="#334155">8.9</text>
+      <text x="322" y="169" fill="#334155">11.4</text>
+      <text x="386" y="169" fill="#334155">13.0</text>
+      <text x="450" y="169" fill="#334155">16.6</text>
+
+      <text x="54" y="197" fill="#334155">NLR</text>
+      <text x="166" y="197" fill="#334155">8.98 (4.94, 16.8)</text>
+      <text x="258" y="197" fill="#334155">3.43</text>
+      <text x="322" y="197" fill="#334155">6.68</text>
+      <text x="386" y="197" fill="#334155">11.47</text>
+      <text x="450" y="197" fill="#334155">26.22</text>
+    </g>
+  </g>
+
+  <g transform="translate(742 156)" filter="url(#shadow)">
+    <rect x="0" y="0" width="574" height="286" rx="28" fill="#ffffff" stroke="#cbd5e1"/>
+    <text x="30" y="42" fill="#0f172a" font-size="24" font-family="Segoe UI, Arial, sans-serif" font-weight="800">Kaplan-Meier Curve</text>
+    <text x="30" y="68" fill="#475569" font-size="15" font-family="Segoe UI, Arial, sans-serif">with paper-style quartile groups</text>
+    <rect x="58" y="90" width="474" height="150" rx="16" fill="#f8fafc" stroke="#e2e8f0"/>
+    <path d="M92 220 H510" stroke="#94a3b8" stroke-width="2"/>
+    <path d="M92 110 V220" stroke="#94a3b8" stroke-width="2"/>
+    <path d="M92 118 L150 126 L150 146 L214 146 L214 172 L290 172 L290 190 L362 190 L362 202 L436 202 L436 212 L510 212" fill="none" stroke="#1b4d6b" stroke-width="4"/>
+    <path d="M92 108 L142 112 L142 126 L196 126 L196 146 L270 146 L270 166 L346 166 L346 184 L420 184 L420 196 L510 196" fill="none" stroke="#3b8ea5" stroke-width="4"/>
+    <path d="M92 102 L138 108 L138 120 L190 120 L190 140 L254 140 L254 162 L334 162 L334 182 L408 182 L408 192 L510 192" fill="none" stroke="#c97c1a" stroke-width="4"/>
+    <path d="M92 98 L132 106 L132 116 L182 116 L182 132 L242 132 L242 154 L312 154 L312 172 L390 172 L390 184 L510 184" fill="none" stroke="#8c2d19" stroke-width="4"/>
+    <g font-family="Segoe UI, Arial, sans-serif" font-size="13" font-weight="700">
+      <text x="420" y="112" fill="#1b4d6b">Q1</text>
+      <text x="450" y="132" fill="#3b8ea5">Q2</text>
+      <text x="480" y="152" fill="#c97c1a">Q3</text>
+      <text x="510" y="172" text-anchor="end" fill="#8c2d19">Q4</text>
+    </g>
+    <rect x="58" y="248" width="474" height="18" rx="9" fill="#e2e8f0"/>
+    <text x="294" y="261" text-anchor="middle" fill="#475569" font-size="12" font-family="Segoe UI, Arial, sans-serif">Number at risk</text>
+  </g>
+
+  <g transform="translate(84 500)" filter="url(#shadow)">
+    <rect x="0" y="0" width="560" height="286" rx="28" fill="#ffffff" stroke="#cbd5e1"/>
+    <text x="30" y="42" fill="#0f172a" font-size="24" font-family="Segoe UI, Arial, sans-serif" font-weight="800">Subgroup Forest Plot</text>
+    <text x="30" y="68" fill="#475569" font-size="15" font-family="Segoe UI, Arial, sans-serif">HR with confidence intervals and interaction p-values</text>
+    <path d="M304 92 V246" stroke="#cbd5e1" stroke-width="3"/>
+    <g font-family="Segoe UI, Arial, sans-serif" font-size="14">
+      <text x="30" y="118" fill="#334155">Overall</text>
+      <text x="30" y="150" fill="#334155">Age 65-75</text>
+      <text x="30" y="182" fill="#334155">Age ≥75</text>
+      <text x="30" y="214" fill="#334155">BMI &lt;25</text>
+      <text x="30" y="246" fill="#334155">BMI ≥25</text>
+    </g>
+    <g stroke="#7c3aed" stroke-width="4" fill="#7c3aed">
+      <line x1="250" y1="114" x2="366" y2="114"/><circle cx="308" cy="114" r="7"/>
+      <line x1="226" y1="146" x2="362" y2="146"/><circle cx="294" cy="146" r="7"/>
+      <line x1="240" y1="178" x2="348" y2="178"/><circle cx="294" cy="178" r="7"/>
+      <line x1="214" y1="210" x2="380" y2="210"/><circle cx="298" cy="210" r="7"/>
+      <line x1="250" y1="242" x2="350" y2="242"/><circle cx="300" cy="242" r="7"/>
+    </g>
+    <g font-family="Segoe UI, Arial, sans-serif" font-size="14">
+      <text x="400" y="118" fill="#334155">1.12 (1.07-1.17)</text>
+      <text x="400" y="150" fill="#334155">1.13 (1.06-1.21)</text>
+      <text x="400" y="182" fill="#334155">1.10 (1.04-1.18)</text>
+      <text x="400" y="214" fill="#334155">1.17 (1.05-1.29)</text>
+      <text x="400" y="246" fill="#334155">1.11 (1.05-1.17)</text>
+    </g>
+  </g>
+
+  <g transform="translate(742 500)" filter="url(#shadow)">
+    <rect x="0" y="0" width="574" height="286" rx="28" fill="#ffffff" stroke="#cbd5e1"/>
+    <text x="30" y="42" fill="#0f172a" font-size="24" font-family="Segoe UI, Arial, sans-serif" font-weight="800">Reproduction Report</text>
+    <text x="30" y="68" fill="#475569" font-size="15" font-family="Segoe UI, Arial, sans-serif">Markdown summary for alignment, metrics, and debugging notes</text>
+    <rect x="32" y="92" width="510" height="18" rx="9" fill="#e2e8f0"/>
+    <rect x="32" y="126" width="360" height="14" rx="7" fill="#f1f5f9"/>
+    <rect x="32" y="150" width="462" height="14" rx="7" fill="#f1f5f9"/>
+    <rect x="32" y="174" width="498" height="14" rx="7" fill="#f1f5f9"/>
+    <rect x="32" y="208" width="178" height="54" rx="14" fill="#dbeafe"/>
+    <rect x="226" y="208" width="178" height="54" rx="14" fill="#ccfbf1"/>
+    <rect x="420" y="208" width="122" height="54" rx="14" fill="#ede9fe"/>
+    <text x="121" y="238" text-anchor="middle" fill="#1e3a8a" font-size="15" font-family="Segoe UI, Arial, sans-serif" font-weight="800">cohort gap</text>
+    <text x="315" y="238" text-anchor="middle" fill="#115e59" font-size="15" font-family="Segoe UI, Arial, sans-serif" font-weight="800">HR aligned</text>
+    <text x="481" y="238" text-anchor="middle" fill="#5b21b6" font-size="15" font-family="Segoe UI, Arial, sans-serif" font-weight="800">RCS mismatch</text>
+  </g>
+</svg>
