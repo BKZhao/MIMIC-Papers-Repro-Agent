@@ -2,6 +2,22 @@
 
 Agent framework for automated reproduction of MIMIC clinical observational papers.
 
+<p align="center">
+  <img src="https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white" alt="Python 3.10+">
+  <img src="https://img.shields.io/badge/PostgreSQL-backed-336791?logo=postgresql&logoColor=white" alt="PostgreSQL-backed">
+  <img src="https://img.shields.io/badge/MIMIC-IV%20first-0F766E" alt="MIMIC-IV first">
+  <img src="https://img.shields.io/badge/OpenClaw%20%2F%20Lobster-ready-1D4ED8" alt="OpenClaw / Lobster ready">
+  <img src="https://img.shields.io/badge/Status-Clinical%20Paper%20Reproduction%20v1-7C3AED" alt="Clinical Paper Reproduction v1">
+</p>
+
+<p align="center">
+  <strong>Read a paper -> build a TaskContract -> connect to MIMIC -> reproduce tables and figures -> verify against the paper.</strong>
+</p>
+
+> [!IMPORTANT]
+> The project is intentionally `MIMIC-first`, `paper-first`, and `artifact-first`.
+> LLMs help read the paper and structure the task. Deterministic SQL and Python produce the actual cohort, tables, figures, and verification outputs.
+
 It is designed for one concrete job:
 
 - take a paper from `papers/`
@@ -36,7 +52,7 @@ The current goal is practical and narrow:
 
 The right description today is `clinical paper reproduction engine v1`, not a general-purpose paper auto-reproduction platform.
 
-## What This Repository Automates
+## ✨ What This Repository Automates
 
 For supported papers, the repository automates the full paper-to-artifact chain:
 
@@ -49,9 +65,20 @@ For supported papers, the repository automates the full paper-to-artifact chain:
 7. export paper-like tables and figures
 8. save verification artifacts and a reproduction report
 
-## Automation Workflow
+## 🧭 Automation Workflow
 
-### Step 1. Read the paper first
+```mermaid
+flowchart LR
+    A["📄 Paper Intake<br/>PDF / MD / DOCX"] --> B["🧠 TaskContract Builder<br/>study design / variables / outputs"]
+    B --> C{"🎯 Supported preset?"}
+    C -->|Yes| D["🗄️ Cohort + Analysis Dataset<br/>profile-driven SQL"]
+    D --> E["📊 Statistics<br/>baseline / Cox / KM / RCS / subgroup"]
+    E --> F["🖼️ Figures + Tables<br/>CSV / MD / PNG / JSON"]
+    F --> G["✅ Verification + Report<br/>alignment diagnostics"]
+    C -->|No| H["🧾 Planning Output<br/>missing fields / execution blueprint"]
+```
+
+### 📄 Step 1. Read the paper first
 
 The system does not start by guessing SQL. It starts from the paper.
 
@@ -66,7 +93,7 @@ Implementation:
 
 - [`src/repro_agent/paper_materials.py`](src/repro_agent/paper_materials.py)
 
-### Step 2. Build a machine-readable study contract
+### 🧠 Step 2. Build a machine-readable study contract
 
 The paper text plus user instructions are converted into a normalized `TaskContract`.
 
@@ -83,7 +110,7 @@ Implementation:
 
 - [`src/repro_agent/task_builder.py`](src/repro_agent/task_builder.py)
 
-### Step 3. Route to deterministic execution or planning
+### 🚦 Step 3. Route to deterministic execution or planning
 
 After contract building, the system decides whether to:
 
@@ -96,7 +123,7 @@ Implementation:
 - [`src/repro_agent/preset_registry.py`](src/repro_agent/preset_registry.py)
 - [`src/repro_agent/paper_profiles.py`](src/repro_agent/paper_profiles.py)
 
-### Step 4. Build the cohort and analysis dataset
+### 🗄️ Step 4. Build the cohort and analysis dataset
 
 For supported profiles, the active execution path is profile-driven:
 
@@ -105,7 +132,7 @@ For supported profiles, the active execution path is profile-driven:
 
 These steps connect to MIMIC, apply paper-specific cohort logic, and export the model-ready dataset.
 
-### Step 5. Run statistics and generate paper-like outputs
+### 📊 Step 5. Run statistics and generate paper-like outputs
 
 The current active statistics layer exports:
 
@@ -123,7 +150,7 @@ Implementation:
 - [`scripts/profiles/run_profile_stats.py`](scripts/profiles/run_profile_stats.py)
 - [`src/repro_agent/profile_stats.py`](src/repro_agent/profile_stats.py)
 
-### Step 6. Verify against the paper
+### ✅ Step 6. Verify against the paper
 
 The workflow saves structured artifacts that make alignment debugging possible:
 
@@ -134,7 +161,7 @@ The workflow saves structured artifacts that make alignment debugging possible:
 
 This is the main path we use to understand where a reproduction run matches the paper and where it diverges.
 
-## LLM vs Deterministic Execution
+## 🧠 LLM vs Deterministic Execution
 
 The intended split is strict:
 
@@ -143,7 +170,7 @@ The intended split is strict:
 
 The repository should not use LLMs to fabricate cohort logic, execute statistics, or invent results.
 
-## What A Run Produces
+## 📦 What A Run Produces
 
 For a successful supported run, expected artifacts include:
 
@@ -166,7 +193,7 @@ Typical output roots:
 - `results/runs/<paper_profile>/<run_label>/`
 - `shared/sessions/<session_id>/`
 
-## Core concepts
+## 🧩 Core Concepts
 
 - `TaskContract`
   The main exchange object for cohort logic, variables, models, outputs, and verification targets.
@@ -177,7 +204,7 @@ Typical output roots:
 - `OpenClaw Bridge`
   The stable external interface for `plan_task`, `run_task`, `export_contract`, `run_preset_pipeline`, and `extract_analysis_dataset`.
 
-## Current status
+## 🚧 Current Status
 
 Already working well:
 
@@ -195,9 +222,9 @@ Still in progress:
 - generic cohort compilation from arbitrary paper text is not fully automatic yet
 - some study families still need broader deterministic coverage
 
-## Execution modes
+## ▶️ Execution Modes
 
-### Deterministic profile path
+### ⚙️ Deterministic Profile Path
 
 Use this when a paper is already represented as a supported execution profile.
 
@@ -229,7 +256,7 @@ python3 scripts/profiles/run_profile_stats.py \
   --profile mimic_nlr_sepsis_elderly
 ```
 
-### Agentic / OpenClaw path
+### 🤖 Agentic / OpenClaw Path
 
 Use this when the system needs to read a paper, build a contract, and decide whether the task is executable now or should remain planning-first.
 
@@ -265,7 +292,7 @@ Recommended automation pattern for a new paper:
 4. if it is a supported preset, run the deterministic path
 5. otherwise keep the result as planning output, not fake execution
 
-## OpenClaw and Lobster
+## 🦞 OpenClaw and Lobster
 
 The repository exposes one external research agent:
 
@@ -288,7 +315,7 @@ Recommended entrypoint contract for Lobster:
 4. if executable, call `run_task`
 5. read artifacts from `shared/` and `results/`
 
-## Project layout
+## 🗂️ Project Layout
 
 ```text
 paper-repro-agent/
@@ -319,7 +346,7 @@ Notes:
 - `scripts/legacy/` is compatibility-only and should not drive new design work.
 - `docs/reference/` is historical context, not the source of truth for the current architecture.
 
-## Quick start
+## 🚀 Quick Start
 
 1. Copy the env template:
 
@@ -374,7 +401,7 @@ paper-repro run-preset-pipeline --config configs/pipeline.example.yaml
 bash scripts/git_update.sh "feat: your change summary"
 ```
 
-## Credentials and security
+## 🔐 Credentials and Security
 
 - Store DB and API keys in environment variables only
 - Keep sample values only in `.env.example`
@@ -390,7 +417,7 @@ Current env inputs include:
 - optional `LLM_DEFAULT_MODEL`
 - optional `LLM_PROVIDER`
 
-## Skills
+## 🧰 Skills
 
 External scientific skills are tracked in [`docs/skills_map.md`](docs/skills_map.md).
 
@@ -403,7 +430,7 @@ Current external skill targets:
 - `clinical-reports`
 - `statistical-analysis`
 
-## Current Boundaries
+## 🚧 Current Boundaries
 
 What works now:
 
@@ -420,6 +447,6 @@ What does not yet fully work:
 - complete non-preset end-to-end execution
 - broad support for every clinical study family
 
-## Contributors
+## 👥 Contributors
 
 See [CONTRIBUTORS.md](CONTRIBUTORS.md).
