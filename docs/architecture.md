@@ -1,25 +1,176 @@
 # Architecture
 
-## Summary
+## Scope
 
-The framework now uses a dual-track architecture:
+The repository is being actively aligned around one concrete goal:
 
-- `deterministic`
-  Repeatable paper reproduction for stable presets, currently strongest for the MIMIC-IV TyG sepsis workflow
-- `agentic`
-  Generic task planning and multi-subagent execution driven by a structured `TaskContract`
+- automate reproduction of `MIMIC-IV` clinical observational papers
+- use `PostgreSQL` as the execution backend
+- read the paper first, then derive cohort logic, variables, models, tables, and figures
+- export reproducible artifacts that can be consumed by OpenClaw or Lobster
 
-The key design rule is: paper-specific logic should move into presets, contracts, and verification targets, while the engine remains reusable.
+This is not yet a general paper reproduction platform. The active design target is a focused `MIMIC clinical paper reproduction engine`.
 
-## Main layers
+## Current source of truth
 
-### 1. Interface and contract layer
+The current architecture is no longer driven by the older directory-based prompt-file design.
 
-Primary module:
+The active source of truth is now:
 
-- `src/repro_agent/contracts.py`
+- [`openclaw/SOUL.MD`](../openclaw/SOUL.MD)
+- [`openclaw/skills/`](../openclaw/skills)
+- [`src/repro_agent/task_builder.py`](../src/repro_agent/task_builder.py)
+- [`src/repro_agent/openclaw_bridge.py`](../src/repro_agent/openclaw_bridge.py)
+- [`src/repro_agent/paper_profiles.py`](../src/repro_agent/paper_profiles.py)
+- [`scripts/profiles/`](../scripts/profiles)
+- [`src/repro_agent/profile_stats.py`](../src/repro_agent/profile_stats.py)
 
-This layer defines the system-wide schemas for:
+`docs/reference/` is historical context only.
+
+## End-to-end workflow
+
+### 1. Read the paper
+
+Paper intake starts from `papers/` and currently supports:
+
+- PDF
+- Markdown
+- DOCX sidecars
+
+Implementation:
+
+- [`src/repro_agent/paper_materials.py`](../src/repro_agent/paper_materials.py)
+
+Key behavior:
+
+- same-stem sidecars are preferred
+- generic `table.md` and `si.docx` are attached only in the legacy single-paper layout
+- this avoids cross-paper contamination when the `papers/` directory contains multiple studies
+
+### 2. Extract study structure
+
+The paper text and user instructions are converted into a normalized `TaskContract`.
+
+Implementation:
+
+- [`src/repro_agent/task_builder.py`](../src/repro_agent/task_builder.py)
+
+Current behavior:
+
+- use LLM extraction when available
+- fall back to heuristic extraction if LLM is unavailable
+- infer exposures, outcomes, covariates, models, outputs, and cohort logic
+- detect supported presets
+- infer study templates
+- apply MIMIC semantic variable mapping
+
+This is the layer that should learn from the paper itself instead of guessing.
+
+### 3. Route the task
+
+After contract construction, the system decides whether to:
+
+- bridge into deterministic execution for a supported paper profile
+- stay in planning-first mode for an unsupported non-preset paper
+
+Implementation:
+
+- [`src/repro_agent/openclaw_bridge.py`](../src/repro_agent/openclaw_bridge.py)
+- [`src/repro_agent/preset_registry.py`](../src/repro_agent/preset_registry.py)
+- [`src/repro_agent/study_templates.py`](../src/repro_agent/study_templates.py)
+- [`src/repro_agent/semantic_registry.py`](../src/repro_agent/semantic_registry.py)
+
+The `TaskContract` is the only stable exchange object between planning and execution.
+
+### 4. Build cohort and analysis dataset
+
+For supported papers, execution is profile-driven.
+
+Profile definition:
+
+- [`src/repro_agent/paper_profiles.py`](../src/repro_agent/paper_profiles.py)
+
+Current deterministic scripts:
+
+- [`scripts/profiles/build_profile_cohort.py`](../scripts/profiles/build_profile_cohort.py)
+- [`scripts/profiles/build_profile_analysis_dataset.py`](../scripts/profiles/build_profile_analysis_dataset.py)
+- [`scripts/profiles/run_profile_stats.py`](../scripts/profiles/run_profile_stats.py)
+
+What the profile carries today:
+
+- paper key and title
+- dataset version expectation
+- predictor and outcome columns
+- quartile boundaries
+- model adjustment sets
+- subgroup definitions
+- expected outputs
+
+This is the active execution path for supported MIMIC papers.
+
+### 5. Generate paper-like tables and figures
+
+The active stats layer already exports outputs that look much closer to the paper than a generic "run succeeded" status.
+
+Implementation:
+
+- [`src/repro_agent/profile_stats.py`](../src/repro_agent/profile_stats.py)
+
+Current structured table outputs:
+
+- baseline table in CSV and Markdown
+- Cox model table in CSV and Markdown
+- subgroup analysis table in CSV and Markdown
+
+Current figure outputs:
+
+- Kaplan-Meier curve
+- restricted cubic spline plot
+- ROC curve
+- subgroup forest plot
+
+Current summary outputs:
+
+- cohort funnel JSON
+- missingness JSON
+- KM summary JSON
+- RCS summary JSON
+- ROC summary JSON
+- stats summary JSON
+- model-ready analysis dataset CSV
+
+This is the layer that should keep expanding until it can emit the same table and figure families used by the target paper.
+
+### 6. Verify and report
+
+The repository follows an artifact-first design.
+
+Primary runtime modules:
+
+- [`src/repro_agent/runtime.py`](../src/repro_agent/runtime.py)
+- [`src/repro_agent/agent_runner.py`](../src/repro_agent/agent_runner.py)
+- [`src/repro_agent/pipeline.py`](../src/repro_agent/pipeline.py)
+
+Artifact locations:
+
+- `shared/`
+  structured intermediate outputs
+- `results/`
+  human-facing figures and reports
+- `shared/sessions/<session_id>/`
+  planning and execution artifacts for one agentic session
+
+This artifact contract is what OpenClaw and Lobster should read instead of inferring state from prompts.
+
+## System layers
+
+### Contract layer
+
+Primary file:
+
+- [`src/repro_agent/contracts.py`](../src/repro_agent/contracts.py)
+
+Core objects:
 
 - `TaskContract`
 - `DatasetSpec`
@@ -28,137 +179,97 @@ This layer defines the system-wide schemas for:
 - `ModelSpec`
 - `OutputSpec`
 - `SessionState`
-- `AgentRun`
-- `ArtifactRecord`
 
-Everything above and below this layer should consume the same contract instead of inventing paper-specific interfaces.
+### Configuration and LLM layer
 
-### 2. Configuration and routing layer
+Primary files:
 
-Primary modules:
+- [`src/repro_agent/config.py`](../src/repro_agent/config.py)
+- [`src/repro_agent/llm.py`](../src/repro_agent/llm.py)
+- [`src/repro_agent/skills_registry.py`](../src/repro_agent/skills_registry.py)
 
-- `src/repro_agent/config.py`
-- `src/repro_agent/skills_registry.py`
-- `src/repro_agent/llm.py`
+Responsibilities:
 
-This layer controls:
+- environment and database wiring
+- OpenAI-compatible LLM client setup
+- model routing
+- skill allowlists
+- execution and verification policy
 
-- execution mode and interaction mode
-- agent-level model routing
-- skill allowlists and defaults
-- dataset adapter selection
-- artifact and verification policy
+### Execution layer
 
-Current default LLM route is OpenAI-compatible SiliconFlow configuration driven by environment variables.
+Primary files:
 
-### 3. Orchestration layer
+- [`src/repro_agent/paper_materials.py`](../src/repro_agent/paper_materials.py)
+- [`src/repro_agent/task_builder.py`](../src/repro_agent/task_builder.py)
+- [`src/repro_agent/paper_profiles.py`](../src/repro_agent/paper_profiles.py)
+- [`src/repro_agent/profile_stats.py`](../src/repro_agent/profile_stats.py)
+- [`src/repro_agent/dataset_adapters.py`](../src/repro_agent/dataset_adapters.py)
+- [`src/repro_agent/db/connectors.py`](../src/repro_agent/db/connectors.py)
 
-Primary modules:
+### OpenClaw bridge layer
 
-- `src/repro_agent/pipeline.py`
-- `src/repro_agent/agent_runner.py`
-- `src/repro_agent/cli.py`
+Primary files:
 
-This layer has two executors:
+- [`openclaw/SOUL.MD`](../openclaw/SOUL.MD)
+- [`openclaw/skills/skills_manifest.yaml`](../openclaw/skills/skills_manifest.yaml)
+- [`src/repro_agent/openclaw_bridge.py`](../src/repro_agent/openclaw_bridge.py)
 
-- `PaperReproPipeline`
-  deterministic orchestrator with fixed step ordering for stable batch runs
-- `AgentRunner`
-  multi-subagent executor for planning and interactive study execution
+External contract:
 
-### 4. Dataset and execution layer
+- `plan_task`
+- `run_task`
+- `export_contract`
+- `run_preset_pipeline`
+- `extract_analysis_dataset`
 
-Primary modules:
+## Deterministic vs agentic
 
-- `src/repro_agent/dataset_adapters.py`
-- `src/repro_agent/db/connectors.py`
-- `scripts/build_tyg_sepsis_cohort.py`
-- `scripts/build_tyg_analysis_dataset.py`
-- `src/repro_agent/stats_analysis.py`
+### Deterministic
 
-This layer handles:
+Best for:
 
-- dataset-specific semantics
-- SQL-backed extraction
-- cohort generation
-- wide-table feature expansion
-- stats execution and figure generation
+- supported paper presets
+- stable reruns
+- reproducible table and figure generation
 
-At the moment, `MIMIC-IV` is the first adapter and the TyG sepsis paper is the most complete preset.
+Current strongest path:
 
-### 5. Artifact and runtime layer
+- profile-driven MIMIC execution
 
-Primary module:
+### Agentic
 
-- `src/repro_agent/runtime.py`
+Best for:
 
-This layer is responsible for explicit artifact writes and logging:
+- reading a new paper
+- extracting study design
+- deciding whether the task is already executable
+- producing a `TaskContract`, missing fields, and execution blueprint
 
-- `shared/`
-- `results/`
-- `shared/sessions/<session_id>/`
-- `results/run_events.jsonl`
-- `results/agent_runs.jsonl`
-- `results/artifacts.jsonl`
+Current limitation:
 
-This artifact-first design is central to reproducibility and debugging.
+- unsupported non-preset papers are still planning-first in many cases
 
-## Execution flows
+## What is mature now
 
-### Deterministic flow
+- paper intake from PDF / Markdown / DOCX
+- LLM-backed contract extraction with heuristic fallback
+- MIMIC semantic mapping scaffold
+- deterministic profile execution for supported papers
+- baseline, Cox, subgroup, KM, RCS, and ROC outputs
+- artifact-first session and run tracking
+- one-agent OpenClaw integration scaffold
 
-Current stable step order:
+## Main gaps still open
 
-1. `paper_parser`
-2. `cohort_agent`
-3. `stats_agent`
-4. `verify_agent`
-5. `report_agent`
-
-This flow is best used for paper-aligned reruns where the expected outputs and quality gates are already known.
-
-### Agentic flow
-
-Current high-level step order:
-
-1. parse paper materials and user instructions
-2. build a `TaskContract`
-3. create session artifacts
-4. run subagents:
-   - `paper_parser_agent`
-   - `study_design_agent`
-   - `cohort_agent`
-   - `feature_agent`
-   - `stats_agent`
-   - `figure_agent`
-   - `verify_agent`
-   - `report_agent`
-   - `git_update_agent`
-
-If the task matches a built-in preset, `AgentRunner` may bridge into the deterministic backend instead of treating the task as planning-only.
-
-## Current maturity and boundaries
-
-Already mature:
-
-- deterministic MIMIC TyG sepsis paper workflow
-- real cohort extraction and analysis dataset expansion
-- Python-based baseline, KM, Cox, RCS, subgroup, and alignment diagnostics
-- session-based task planning and artifact recording
-
-Partially mature:
-
-- generic agentic execution for non-preset MIMIC studies
-- general dataset adapter execution beyond planning blueprints
-- skill wrappers as independent runtime tools
-
-Known gap:
-
-- `papers/table.md` and `papers/si.docx` are already ingested as paper materials, but they are not yet fully promoted into structured verification truth across all diagnostics
+- arbitrary new papers do not yet compile automatically into executable SQL
+- supplement tables and paper targets still need stronger normalization into verification truth
+- broader study families still need deterministic templates
+- paper-specific variable engineering still requires more reusable mapping
 
 ## Security stance
 
-- No hardcoded credentials in repo-tracked files
-- Database and API secrets come from environment variables only
-- `src/repro_agent/db/connectors.py` exposes masked DSN diagnostics only
-- Reports and logs should never contain raw credentials
+- no hardcoded credentials in tracked source files
+- database and API secrets should come from environment variables
+- DSN diagnostics should stay masked
+- reports and logs must not leak secrets

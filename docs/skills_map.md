@@ -32,6 +32,21 @@ The framework also models local wrapper skills to stabilize behavior behind proj
 
 These wrappers are currently defined in code via `src/repro_agent/skills_registry.py`.
 
+## OpenClaw-facing local skills
+
+The OpenClaw integration exposes a cleaner capability boundary with project-owned skill docs:
+
+- `paper_intake_and_contract`
+- `mimic_cohort_execution`
+- `analysis_dataset_expansion`
+- `survival_stats_execution`
+- `result_figure_generation`
+- `paper_alignment_verification`
+- `git_update`
+
+These live under `openclaw/skills/` and map back to the same execution engine.
+Their machine-readable contract is stored in `openclaw/skills/skills_manifest.yaml`.
+
 ## Default agent-to-skill intent
 
 - `paper_parser_agent`
@@ -56,4 +71,5 @@ These wrappers are currently defined in code via `src/repro_agent/skills_registr
 ## Current status
 
 - Skill routing and allowlists are implemented.
-- Some local wrapper skills are still architectural placeholders and are not yet fully independent runtime toolchains.
+- OpenClaw skill contracts are now both human-readable (`SKILL.md`) and machine-readable (`skills_manifest.yaml`).
+- The OpenClaw-facing skill layer is the preferred interface; older local wrapper skill names are now secondary internal abstractions.

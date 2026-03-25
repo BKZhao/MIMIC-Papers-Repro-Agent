@@ -19,8 +19,10 @@ from .contracts import (
     VariableSpec,
 )
 from .llm import LLMError, OpenAICompatibleClient
-from .paper_contract import build_paper_alignment_contract
 from .paper_materials import collect_paper_materials
+from .preset_registry import detect_paper_preset, get_paper_preset
+from .semantic_registry import load_mimic_semantic_registry, resolve_semantic_variable
+from .study_templates import infer_study_template
 
 
 MODEL_KEYWORDS: dict[str, str] = {
@@ -61,6 +63,30 @@ DEFAULT_OUTPUT_SPECS: dict[str, dict[str, str]] = {
     "subgroup_figure": {"kind": "subgroup_figure", "format": "csv"},
     "reproduction_report": {"kind": "reproduction_report", "format": "md"},
 }
+
+STRUCTURED_FIELD_ALIASES: dict[str, tuple[str, ...]] = {
+    "exposure_variables": ("自变量", "暴露变量", "暴露因素", "exposure", "exposures", "independent variable", "independent variables"),
+    "outcome_variables": ("因变量", "结局变量", "结局", "outcome", "outcomes", "dependent variable", "dependent variables"),
+    "control_variables": ("控制变量", "协变量", "校正变量", "covariates", "covariate", "controls", "control variables", "adjusted for"),
+    "subgroup_variables": ("亚组变量", "亚组", "subgroup", "subgroups"),
+    "time_variables": ("时间变量", "生存时间变量", "time variable", "time variables"),
+    "models": ("模型", "分析模型", "models", "model"),
+    "outputs": ("输出", "产物", "outputs", "output"),
+    "cohort_logic": ("队列逻辑", "cohort logic"),
+}
+
+STRUCTURED_FIELD_LOOKUP: dict[str, str] = {
+    alias.lower(): field
+    for field, aliases in STRUCTURED_FIELD_ALIASES.items()
+    for alias in aliases
+}
+
+STRUCTURED_FIELD_PATTERN = re.compile(
+    r"(?P<label>"
+    + "|".join(sorted((re.escape(alias) for alias in STRUCTURED_FIELD_LOOKUP), key=len, reverse=True))
+    + r")\s*[:：]",
+    flags=re.IGNORECASE,
+)
 
 
 @dataclass
@@ -104,7 +130,13 @@ def build_task_contract(
                 contract.interaction_mode = InteractionMode.CHAT
                 contract.source_paper_path = paper_path
                 contract.instructions = instructions
-                contract = normalize_task_contract(contract, config=config)
+                _seed_contract_runtime_context(
+                    contract,
+                    dataset_label=config.run.dataset,
+                    instructions=instructions,
+                    paper_materials=materials,
+                )
+                contract = normalize_task_contract(contract, config=config, project_root=project_root)
                 return TaskBuildResult(contract=contract, used_llm=True, paper_materials=materials)
             except LLMError as exc:
                 llm_error = str(exc)
@@ -116,7 +148,13 @@ def build_task_contract(
         dataset_label=config.run.dataset,
         paper_materials=materials,
     )
-    heuristic_contract = normalize_task_contract(heuristic_contract, config=config)
+    _seed_contract_runtime_context(
+        heuristic_contract,
+        dataset_label=config.run.dataset,
+        instructions=instructions,
+        paper_materials=materials,
+    )
+    heuristic_contract = normalize_task_contract(heuristic_contract, config=config, project_root=project_root)
     return TaskBuildResult(
         contract=heuristic_contract,
         used_llm=False,
@@ -125,7 +163,11 @@ def build_task_contract(
     )
 
 
-def normalize_task_contract(contract: TaskContract, config: PipelineConfig) -> TaskContract:
+def normalize_task_contract(
+    contract: TaskContract,
+    config: PipelineConfig,
+    project_root: Path | None = None,
+) -> TaskContract:
     if not contract.dataset.name or contract.dataset.name == "unknown":
         contract.dataset = DatasetSpec(
             name=config.run.dataset or "MIMIC-IV",
@@ -135,12 +177,24 @@ def normalize_task_contract(contract: TaskContract, config: PipelineConfig) -> T
             version=config.run.dataset,
             schemas=["mimiciv_hosp", "mimiciv_icu", "mimiciv_derived"],
         )
+    if not contract.dataset.adapter:
+        contract.dataset.adapter = config.dataset_adapters.default_adapter
+    if not contract.dataset.source_type:
+        contract.dataset.source_type = "postgres"
+    if not contract.dataset.connector_env_prefix:
+        contract.dataset.connector_env_prefix = "MIMIC_PG"
+    if not contract.dataset.version:
+        contract.dataset.version = config.run.dataset
+    if not contract.dataset.schemas and contract.dataset.adapter in {"mimic", "mimic_iv", "mimic-iv"}:
+        contract.dataset.schemas = ["mimiciv_hosp", "mimiciv_icu", "mimiciv_derived"]
     if not contract.cohort.population:
         contract.cohort.population = "critically ill ICU patients"
 
     _dedupe_variables(contract)
-    _apply_builtin_presets(contract)
+    _apply_preset_metadata(contract, project_root=project_root)
+    _apply_semantic_registry_mappings(contract, project_root=project_root)
     _ensure_default_models(contract)
+    _apply_study_template_metadata(contract)
     _ensure_default_outputs(contract)
     _ensure_default_notes(contract)
     return contract
@@ -219,9 +273,18 @@ def summarize_task_contract(contract: TaskContract) -> str:
     if contract.cohort.diagnosis_logic:
         cohort_bits.append(contract.cohort.diagnosis_logic)
     cohort_text = "; ".join(cohort_bits) or "not fully specified"
+    extra_lines: list[str] = []
+    preset_title = str(contract.meta.get("preset_title") or contract.meta.get("preset") or "").strip()
+    if preset_title:
+        extra_lines.append(f"Preset: {preset_title}")
+    template_title = str(contract.meta.get("study_template_title") or contract.meta.get("study_template") or "").strip()
+    if template_title:
+        extra_lines.append(f"Study Template: {template_title}")
+    extra_text = "".join(f"{line}\n" for line in extra_lines)
     return (
         f"Task: {contract.title}\n"
         f"Dataset: {contract.dataset.name} ({contract.dataset.adapter})\n"
+        f"{extra_text}"
         f"Exposures: {exposures}\n"
         f"Outcomes: {outcomes}\n"
         f"Controls: {controls}\n"
@@ -240,6 +303,7 @@ def _build_heuristic_task_contract(
     paper_materials: dict[str, str],
 ) -> TaskContract:
     text = "\n".join([instructions, *paper_materials.values()]).lower()
+    structured_sections = _extract_structured_sections(instructions)
     title = _infer_title_from_path(Path(paper_path))
     dataset = DatasetSpec(
         name=dataset_label or "MIMIC-IV",
@@ -265,6 +329,9 @@ def _build_heuristic_task_contract(
             ["排除标准", "exclusion criteria"],
         ),
     )
+    cohort_logic = structured_sections.get("cohort_logic", "")
+    if cohort_logic and cohort_logic not in cohort.inclusion_criteria:
+        cohort.inclusion_criteria.insert(0, cohort_logic)
     if not cohort.inclusion_criteria and "first icu" in text:
         cohort.inclusion_criteria.append("first ICU stay")
     if "glucose" in text:
@@ -272,12 +339,22 @@ def _build_heuristic_task_contract(
     if "triglyceride" in text or "甘油三酯" in text or "tg" in text:
         cohort.required_measurements.append("triglycerides")
 
-    variables = _infer_variables(instructions=instructions, combined_text=text)
-    models = _infer_models(instructions=instructions, combined_text=text, variables=variables)
-    outputs = _infer_outputs(instructions=instructions, models=models)
-    meta = {}
-    if "tyg" in text and "sepsis" in text and "mimic" in text:
-        meta["preset"] = "mimic_tyg_sepsis"
+    variables = _infer_variables(
+        instructions=instructions,
+        combined_text=text,
+        structured_sections=structured_sections,
+    )
+    models = _infer_models(
+        instructions=instructions,
+        combined_text=text,
+        variables=variables,
+        structured_sections=structured_sections,
+    )
+    outputs = _infer_outputs(
+        instructions=instructions,
+        models=models,
+        structured_sections=structured_sections,
+    )
 
     return TaskContract(
         task_id=task_id,
@@ -292,7 +369,7 @@ def _build_heuristic_task_contract(
         models=models,
         outputs=outputs,
         notes=[],
-        meta=meta,
+        meta={},
     )
 
 
@@ -336,8 +413,27 @@ Allowed variable roles: exposure, outcome, control, subgroup, time, id, derived.
     ]
 
 
-def _infer_variables(instructions: str, combined_text: str) -> list[VariableSpec]:
+def _infer_variables(
+    instructions: str,
+    combined_text: str,
+    structured_sections: dict[str, str] | None = None,
+) -> list[VariableSpec]:
     variables: list[VariableSpec] = []
+    sections = structured_sections or _extract_structured_sections(instructions)
+    role_sections = {
+        "exposure_variables": VariableRole.EXPOSURE,
+        "outcome_variables": VariableRole.OUTCOME,
+        "control_variables": VariableRole.CONTROL,
+        "subgroup_variables": VariableRole.SUBGROUP,
+        "time_variables": VariableRole.TIME,
+    }
+    for field_name, role in role_sections.items():
+        raw_value = sections.get(field_name, "")
+        if not raw_value:
+            continue
+        for variable in _split_variable_answer(raw_value):
+            variables.append(VariableSpec(name=variable, role=role, required=role != VariableRole.CONTROL))
+
     role_patterns = {
         VariableRole.EXPOSURE: [r"自变量[:：]\s*([^\n]+)", r"independent variables?[:：]?\s*([^\n]+)", r"exposure[:：]?\s*([^\n]+)"],
         VariableRole.OUTCOME: [r"因变量[:：]\s*([^\n]+)", r"dependent variables?[:：]?\s*([^\n]+)", r"outcomes?[:：]?\s*([^\n]+)"],
@@ -346,11 +442,13 @@ def _infer_variables(instructions: str, combined_text: str) -> list[VariableSpec
         VariableRole.TIME: [r"时间变量[:：]\s*([^\n]+)", r"time variable[:：]?\s*([^\n]+)"],
     }
     for role, patterns in role_patterns.items():
+        if any(item.role == role for item in variables):
+            continue
         for pattern in patterns:
             match = re.search(pattern, instructions, flags=re.IGNORECASE)
             if not match:
                 continue
-            for variable in _split_variable_answer(match.group(1)):
+            for variable in _split_variable_answer(_clean_structured_value(match.group(1))):
                 variables.append(VariableSpec(name=variable, role=role, required=role != VariableRole.CONTROL))
 
     if "tyg" in combined_text and not any(item.name.lower() == "tyg_index" for item in variables):
@@ -368,9 +466,14 @@ def _infer_variables(instructions: str, combined_text: str) -> list[VariableSpec
     return variables
 
 
-def _infer_models(instructions: str, combined_text: str, variables: list[VariableSpec]) -> list[ModelSpec]:
+def _infer_models(
+    instructions: str,
+    combined_text: str,
+    variables: list[VariableSpec],
+    structured_sections: dict[str, str] | None = None,
+) -> list[ModelSpec]:
     families: list[str] = []
-    explicit_families = _extract_explicit_models(instructions)
+    explicit_families = _extract_explicit_models(instructions, structured_sections=structured_sections)
     if explicit_families:
         families = explicit_families
     else:
@@ -398,8 +501,13 @@ def _infer_models(instructions: str, combined_text: str, variables: list[Variabl
     ]
 
 
-def _infer_outputs(instructions: str, models: list[ModelSpec]) -> list[OutputSpec]:
+def _infer_outputs(
+    instructions: str,
+    models: list[ModelSpec],
+    structured_sections: dict[str, str] | None = None,
+) -> list[OutputSpec]:
     outputs: list[str] = ["cohort_funnel", "analysis_dataset", "missingness_report", "reproduction_report"]
+    outputs.extend(_extract_explicit_outputs(instructions, structured_sections=structured_sections))
     for model in models:
         outputs.extend(OUTPUT_BY_MODEL.get(model.family, []))
     if "table" in instructions.lower() or "表" in instructions:
@@ -464,9 +572,20 @@ def _ensure_default_outputs(contract: TaskContract) -> None:
 
 def _ensure_default_notes(contract: TaskContract) -> None:
     notes = set(contract.notes)
-    if contract.meta.get("preset") == "mimic_tyg_sepsis":
-        notes.add("This task matches the built-in MIMIC TyG sepsis preset.")
-        notes.add("Preset tasks can use the deterministic bridge while the generic agentic contract remains the source of truth.")
+    preset = get_paper_preset(contract.meta.get("preset"))
+    if preset is not None:
+        notes.add(f"This task matches the built-in preset: {preset.title}.")
+        notes.add(
+            "Preset tasks can use the deterministic bridge while the generic agentic contract remains the source of truth."
+        )
+    template_title = str(contract.meta.get("study_template_title", "")).strip()
+    if template_title:
+        notes.add(f"Study template inferred: {template_title}.")
+    mapped_count = int(contract.meta.get("semantic_mapped_variable_count", 0) or 0)
+    if mapped_count > 0:
+        notes.add(f"Semantic registry resolved {mapped_count} variables for {contract.dataset.adapter}.")
+    if contract.meta.get("semantic_unmapped_variables"):
+        notes.add("Some variables are still unmapped and may require follow-up clarification or a dataset-specific compiler.")
     notes.add("Task contract was generated from user instructions and available paper materials.")
     contract.notes = sorted(notes)
 
@@ -479,14 +598,102 @@ def _dedupe_variables(contract: TaskContract) -> None:
     contract.variables = list(deduped.values())
 
 
-def _apply_builtin_presets(contract: TaskContract) -> None:
-    if contract.meta.get("preset") != "mimic_tyg_sepsis":
+def _seed_contract_runtime_context(
+    contract: TaskContract,
+    *,
+    dataset_label: str,
+    instructions: str,
+    paper_materials: dict[str, str],
+) -> None:
+    preset = detect_paper_preset(
+        dataset_label=dataset_label or contract.dataset.name,
+        instructions=instructions,
+        materials=paper_materials,
+    )
+    if preset is None:
+        preset = get_paper_preset(contract.meta.get("preset"))
+    if preset is None:
         return
-    contract.meta.setdefault("execution_backend", "deterministic_bridge")
-    if contract.verification_targets:
+    contract.meta["preset"] = preset.key
+    contract.meta.setdefault("preset_title", preset.title)
+    contract.meta.setdefault("execution_backend", preset.execution_backend)
+    contract.meta.setdefault("preset_description", preset.description)
+    contract.meta.setdefault("preset_supported_domains", list(preset.supported_domains))
+    if not contract.dataset.adapter or contract.dataset.adapter in {"unknown", "generic"}:
+        contract.dataset.adapter = preset.dataset_adapter
+
+
+def _apply_preset_metadata(contract: TaskContract, *, project_root: Path | None) -> None:
+    preset = get_paper_preset(contract.meta.get("preset"))
+    if preset is None:
+        contract.meta.setdefault("execution_backend", "spec_only")
         return
-    paper_contract = build_paper_alignment_contract()
-    contract.verification_targets = [dict(item) for item in paper_contract.get("metric_targets", [])]
+    contract.meta.setdefault("preset_title", preset.title)
+    contract.meta.setdefault("preset_description", preset.description)
+    contract.meta.setdefault("execution_backend", preset.execution_backend)
+    contract.meta.setdefault("preset_supported_domains", list(preset.supported_domains))
+    if not contract.dataset.adapter or contract.dataset.adapter in {"unknown", "generic"}:
+        contract.dataset.adapter = preset.dataset_adapter
+    if not contract.verification_targets:
+        contract.verification_targets = preset.verification_targets(project_root)
+
+
+def _apply_study_template_metadata(contract: TaskContract) -> None:
+    template = infer_study_template(contract)
+    if template is None:
+        contract.meta.pop("study_template", None)
+        contract.meta.pop("study_template_title", None)
+        contract.meta.pop("study_template_suggested_outputs", None)
+        return
+    contract.meta["study_template"] = template.key
+    contract.meta["study_template_title"] = template.title
+    contract.meta["study_template_suggested_outputs"] = list(template.suggested_outputs)
+
+
+def _apply_semantic_registry_mappings(contract: TaskContract, *, project_root: Path | None) -> None:
+    if project_root is None:
+        return
+    if contract.dataset.adapter not in {"mimic", "mimic_iv", "mimic-iv"}:
+        return
+    try:
+        registry = load_mimic_semantic_registry(project_root)
+    except FileNotFoundError:
+        return
+
+    mapped_count = 0
+    unmapped: list[str] = []
+    for variable in contract.variables:
+        semantic = resolve_semantic_variable(registry, variable.name)
+        if semantic is None:
+            if variable.role != VariableRole.ID:
+                unmapped.append(variable.name)
+            continue
+        mapped_count += 1
+        if not variable.label:
+            variable.label = semantic.name
+        if not variable.description and semantic.description:
+            variable.description = semantic.description
+        if not variable.dataset_field:
+            variable.dataset_field = semantic.dataset_field
+        if not variable.source_name:
+            variable.source_name = semantic.source_name or semantic.name
+        variable.meta.setdefault("semantic_name", semantic.name)
+        variable.meta.setdefault("semantic_category", semantic.category)
+        if semantic.aliases:
+            variable.meta.setdefault("semantic_aliases", list(semantic.aliases))
+
+    contract.meta["semantic_registry"] = {
+        "dataset": registry.dataset,
+        "version": registry.version,
+        "source_path": registry.source_path,
+    }
+    contract.dataset.meta.setdefault("semantic_registry_path", registry.source_path)
+    contract.meta["semantic_mapped_variable_count"] = mapped_count
+    deduped_unmapped = sorted(dict.fromkeys(unmapped))
+    if deduped_unmapped:
+        contract.meta["semantic_unmapped_variables"] = deduped_unmapped
+    else:
+        contract.meta.pop("semantic_unmapped_variables", None)
 
 
 def _extract_first_int_after_keywords(text: str, keywords: list[str]) -> int | None:
@@ -539,9 +746,39 @@ def _extract_bullets_after_keywords(text: str, keywords: list[str]) -> list[str]
     return []
 
 
+def _extract_structured_sections(instructions: str) -> dict[str, str]:
+    matches = list(STRUCTURED_FIELD_PATTERN.finditer(instructions))
+    if not matches:
+        return {}
+    sections: dict[str, str] = {}
+    for index, match in enumerate(matches):
+        field_name = STRUCTURED_FIELD_LOOKUP.get(match.group("label").strip().lower())
+        if not field_name:
+            continue
+        start = match.end()
+        end = matches[index + 1].start() if index + 1 < len(matches) else len(instructions)
+        cleaned = _clean_structured_value(instructions[start:end])
+        if not cleaned:
+            continue
+        if field_name in sections:
+            sections[field_name] = f"{sections[field_name]}; {cleaned}"
+        else:
+            sections[field_name] = cleaned
+    return sections
+
+
+def _clean_structured_value(value: str) -> str:
+    cleaned = re.sub(r"\s+", " ", value).strip()
+    cleaned = cleaned.strip(" \t\r\n:：;,，；")
+    cleaned = re.sub(r"^[\-\*\u2022]+", "", cleaned).strip()
+    cleaned = re.sub(r"[.。;；,，]+$", "", cleaned).strip()
+    return cleaned
+
+
 def _split_variable_answer(text: str) -> list[str]:
     parts = re.split(r"[,\n;/，；、]+", text)
-    return [part.strip() for part in parts if part.strip()]
+    cleaned = [_clean_structured_value(part) for part in parts]
+    return [part for part in cleaned if part]
 
 
 def _first_role_name(contract: TaskContract, role: VariableRole) -> str:
@@ -571,23 +808,53 @@ def _normalize_output_name(name: str) -> str:
     return aliases.get(lowered, lowered)
 
 
-def _extract_explicit_models(instructions: str) -> list[str]:
-    patterns = [
-        r"模型[:：]\s*([^\n]+)",
-        r"models?[:：]?\s*([^\n]+)",
-    ]
+def _extract_explicit_models(
+    instructions: str,
+    structured_sections: dict[str, str] | None = None,
+) -> list[str]:
+    sections = structured_sections or _extract_structured_sections(instructions)
     families: list[str] = []
     seen: set[str] = set()
-    for pattern in patterns:
-        match = re.search(pattern, instructions, flags=re.IGNORECASE)
-        if not match:
-            continue
-        for raw_name in _split_variable_answer(match.group(1)):
-            family = _normalize_model_family(raw_name)
-            if family and family not in seen:
-                seen.add(family)
-                families.append(family)
+    candidates: list[str] = []
+    if sections.get("models"):
+        candidates.extend(_split_variable_answer(sections["models"]))
+    else:
+        patterns = [
+            r"模型[:：]\s*([^\n]+)",
+            r"models?[:：]?\s*([^\n]+)",
+        ]
+        for pattern in patterns:
+            match = re.search(pattern, instructions, flags=re.IGNORECASE)
+            if not match:
+                continue
+            candidates.extend(_split_variable_answer(_clean_structured_value(match.group(1))))
+    for raw_name in candidates:
+        family = _normalize_model_family(raw_name)
+        if family and family not in seen:
+            seen.add(family)
+            families.append(family)
     return families
+
+
+def _extract_explicit_outputs(
+    instructions: str,
+    structured_sections: dict[str, str] | None = None,
+) -> list[str]:
+    sections = structured_sections or _extract_structured_sections(instructions)
+    candidates: list[str] = []
+    if sections.get("outputs"):
+        candidates.extend(_split_variable_answer(sections["outputs"]))
+    else:
+        patterns = [
+            r"输出[:：]\s*([^\n]+)",
+            r"outputs?[:：]?\s*([^\n]+)",
+        ]
+        for pattern in patterns:
+            match = re.search(pattern, instructions, flags=re.IGNORECASE)
+            if not match:
+                continue
+            candidates.extend(_split_variable_answer(_clean_structured_value(match.group(1))))
+    return [_normalize_output_name(name) for name in candidates]
 
 
 def _normalize_model_family(name: str) -> str:

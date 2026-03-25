@@ -221,6 +221,18 @@ BASELINE_PERCENT_TARGETS: dict[str, tuple[str, Any]] = {
     "type2_diabetes_pct": ("type2_diabetes", 1),
     "hypertension_pct": ("hypertension", 1),
     "heart_failure_pct": ("heart_failure", 1),
+    "myocardial_infarction_pct": ("myocardial_infarction", 1),
+    "malignant_tumor_pct": ("malignant_tumor", 1),
+    "chronic_renal_failure_pct": ("chronic_renal_failure", 1),
+    "acute_renal_failure_pct": ("acute_renal_failure", 1),
+    "cirrhosis_pct": ("cirrhosis", 1),
+    "hepatitis_pct": ("hepatitis", 1),
+    "tuberculosis_pct": ("tuberculosis", 1),
+    "pneumonia_pct": ("pneumonia", 1),
+    "stroke_pct": ("stroke", 1),
+    "hyperlipidemia_pct": ("hyperlipidemia", 1),
+    "copd_pct": ("copd", 1),
+    "continuous_renal_replacement_therapy_pct": ("continuous_renal_replacement_therapy", 1),
 }
 
 
@@ -1743,6 +1755,8 @@ def _build_paper_alignment_diagnostics(
 ) -> dict[str, Any]:
     cohort_rows = _build_cohort_alignment_rows(project_root=project_root, contract=contract, fallback_n=cohort_n, df=baseline_df)
     baseline_rows = _build_baseline_alignment_rows(df=baseline_df, contract=contract)
+    supplement_rows = _build_supplement_baseline_alignment_rows(df=baseline_df, contract=contract)
+    cox_table_rows = _build_cox_table_alignment_rows(project_root=project_root, contract=contract)
     metric_rows = _build_metric_alignment_rows(metrics=metrics, contract=contract)
     km_rows = _build_km_alignment_rows(km_results=km_results, contract=contract)
     rcs_rows = _build_rcs_alignment_rows(rcs_results=rcs_results, contract=contract)
@@ -1750,6 +1764,8 @@ def _build_paper_alignment_diagnostics(
     sections = {
         "cohort_alignment": _section_payload(cohort_rows),
         "baseline_alignment": _section_payload(baseline_rows),
+        "supplement_baseline_alignment": _section_payload(supplement_rows),
+        "cox_table_alignment": _section_payload(cox_table_rows),
         "metric_alignment": _section_payload(metric_rows),
         "km_alignment": _section_payload(km_rows),
         "rcs_alignment": _section_payload(rcs_rows),
@@ -1761,6 +1777,8 @@ def _build_paper_alignment_diagnostics(
             "section_fail_counts": {name: payload["summary"]["fail"] for name, payload in sections.items()},
             "section_warn_counts": {name: payload["summary"]["warn"] for name, payload in sections.items()},
             "baseline_mean_percent_deviation": _mean_percent_deviation(baseline_rows),
+            "supplement_baseline_mean_percent_deviation": _mean_percent_deviation(supplement_rows),
+            "cox_table_mean_percent_deviation": _mean_percent_deviation(cox_table_rows),
             "metric_mean_percent_deviation": _mean_percent_deviation(metric_rows),
         },
     }
@@ -1838,6 +1856,72 @@ def _build_baseline_alignment_rows(df: pd.DataFrame, contract: dict[str, Any]) -
                 "deviation_percent": _round_or_none(deviation, digits=4),
                 "status": _grade_deviation(deviation, pass_threshold=10, warn_threshold=20) if deviation is not None else "missing",
                 "kind": str(spec.get("kind", "")),
+                "source_file": str(spec.get("source_file", "")),
+                "source_label": str(spec.get("source_label", metric)),
+            }
+        )
+    return rows
+
+
+def _build_supplement_baseline_alignment_rows(df: pd.DataFrame, contract: dict[str, Any]) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for metric, spec in dict(contract.get("supplement_baseline_targets", {})).items():
+        target = _to_optional_float(spec.get("target"))
+        actual = _extract_baseline_actual(df, metric)
+        deviation = _percent_deviation(target, actual) if target is not None and actual is not None else None
+        rows.append(
+            {
+                "metric": metric,
+                "target": target,
+                "actual": actual,
+                "deviation_percent": _round_or_none(deviation, digits=4),
+                "status": _grade_deviation(deviation, pass_threshold=10, warn_threshold=20) if deviation is not None else "missing",
+                "kind": str(spec.get("kind", "")),
+                "source_file": str(spec.get("source_file", "")),
+                "source_label": str(spec.get("source_label", metric)),
+            }
+        )
+    return rows
+
+
+def _build_cox_table_alignment_rows(project_root: Path, contract: dict[str, Any]) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    target_rows = list(contract.get("cox_table_targets", []))
+    cox_path = project_root / "shared" / "cox_models.csv"
+    actual_df = pd.read_csv(cox_path) if cox_path.exists() else pd.DataFrame()
+    for item in target_rows:
+        endpoint = str(item.get("endpoint", ""))
+        model = str(item.get("model", ""))
+        term = str(item.get("term", ""))
+        actual_row = _lookup_cox_actual_row(actual_df, endpoint=endpoint, model=model, term=term)
+
+        target_hr = _to_optional_float(item.get("hazard_ratio"))
+        actual_hr = _to_optional_float(actual_row.get("hazard_ratio")) if actual_row is not None else None
+        hr_deviation = _percent_deviation(target_hr, actual_hr) if target_hr is not None and actual_hr is not None else None
+        rows.append(
+            {
+                "metric": f"{endpoint}_{model}_{term}_hazard_ratio",
+                "target": target_hr,
+                "actual": actual_hr,
+                "deviation_percent": _round_or_none(hr_deviation, digits=4),
+                "status": _grade_deviation(hr_deviation, pass_threshold=10, warn_threshold=20) if hr_deviation is not None else "missing",
+                "source_file": str(item.get("source_file", "")),
+                "source_label": str(item.get("source_label", term)),
+            }
+        )
+
+        target_p = _to_optional_float(item.get("p_value"))
+        actual_p = _to_optional_float(actual_row.get("p_value")) if actual_row is not None else None
+        p_status, p_deviation = _grade_p_value_target(target_p, actual_p)
+        rows.append(
+            {
+                "metric": f"{endpoint}_{model}_{term}_p_value",
+                "target": target_p,
+                "actual": actual_p,
+                "deviation_percent": _round_or_none(p_deviation, digits=4),
+                "status": p_status,
+                "source_file": str(item.get("source_file", "")),
+                "source_label": str(item.get("source_label", term)),
             }
         )
     return rows
@@ -1857,9 +1941,33 @@ def _build_metric_alignment_rows(metrics: dict[str, float | None], contract: dic
                 "actual": actual,
                 "deviation_percent": _round_or_none(deviation, digits=4),
                 "status": _grade_deviation(deviation) if deviation is not None else "missing",
+                "source_file": str(item.get("source_file", "")),
             }
         )
     return rows
+
+
+def _lookup_cox_actual_row(
+    df: pd.DataFrame,
+    *,
+    endpoint: str,
+    model: str,
+    term: str,
+) -> pd.Series | None:
+    if df.empty:
+        return None
+    required_columns = {"endpoint", "model", "term"}
+    if not required_columns.issubset(df.columns):
+        return None
+    mask = (
+        df["endpoint"].astype(str).eq(endpoint)
+        & df["model"].astype(str).eq(model)
+        & df["term"].astype(str).eq(term)
+    )
+    matches = df.loc[mask]
+    if matches.empty:
+        return None
+    return matches.iloc[0]
 
 
 def _build_km_alignment_rows(km_results: dict[str, dict[str, Any]], contract: dict[str, Any]) -> list[dict[str, Any]]:

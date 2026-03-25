@@ -123,11 +123,25 @@ class PaperReproPipeline:
         }
         out = self.runtime.write_json("shared/methods.json", methods)
         contract_out = self.runtime.write_json("shared/paper_alignment_contract.json", contract)
+        paper_targets_out = self.runtime.write_json(
+            "shared/paper_material_targets.json",
+            {
+                "source_files": list(contract.get("source_files", [])),
+                "cohort_targets": dict(contract.get("cohort_targets", {})),
+                "baseline_targets": dict(contract.get("baseline_targets", {})),
+                "supplement_baseline_targets": dict(contract.get("supplement_baseline_targets", {})),
+                "cox_table_targets": list(contract.get("cox_table_targets", [])),
+                "km_targets": dict(contract.get("km_targets", {})),
+                "rcs_targets": dict(contract.get("rcs_targets", {})),
+                "parsed_target_counts": dict(contract.get("parsed_target_counts", {})),
+                "notes": list(contract.get("notes", [])),
+            },
+        )
         return StepResult(
             step="paper_parser",
             status=StepStatus.SUCCESS,
             message="Generated methods contract",
-            outputs=[out, contract_out],
+            outputs=[out, contract_out, paper_targets_out],
             meta={"dry_run": dry_run, "paper_path": rel_paper_path},
         )
 
@@ -264,13 +278,7 @@ class PaperReproPipeline:
         diagnostics_path = self.project_root / "shared" / "paper_alignment_diagnostics.json"
         if diagnostics_path.exists():
             diagnostics = json.loads(diagnostics_path.read_text(encoding="utf-8"))
-            for section_name in (
-                "cohort_alignment",
-                "baseline_alignment",
-                "metric_alignment",
-                "km_alignment",
-                "rcs_alignment",
-            ):
+            for section_name in _ordered_alignment_sections(diagnostics):
                 payload = diagnostics.get(section_name)
                 if not isinstance(payload, dict):
                     continue
@@ -344,13 +352,7 @@ class PaperReproPipeline:
             "",
             "## Alignment Diagnostics",
         ]
-        for section_name in (
-            "paper_cohort_alignment",
-            "paper_baseline_alignment",
-            "paper_km_alignment",
-            "paper_rcs_alignment",
-            "paper_metric_alignment",
-        ):
+        for section_name in _ordered_report_alignment_sections(dict(deviation.get("sections", {}))):
             section = dict(deviation.get("sections", {})).get(section_name)
             if not section:
                 continue
@@ -375,6 +377,8 @@ class PaperReproPipeline:
                     "",
                     "## Diagnostic Summary",
                     f"- Baseline mean percent deviation: {_format_report_value(diagnostics.get('summary', {}).get('baseline_mean_percent_deviation'))}",
+                    f"- Supplement baseline mean percent deviation: {_format_report_value(diagnostics.get('summary', {}).get('supplement_baseline_mean_percent_deviation'))}",
+                    f"- Cox table mean percent deviation: {_format_report_value(diagnostics.get('summary', {}).get('cox_table_mean_percent_deviation'))}",
                     f"- Metric mean percent deviation: {_format_report_value(diagnostics.get('summary', {}).get('metric_mean_percent_deviation'))}",
                 ]
             )
@@ -442,7 +446,7 @@ def _make_cohort_rows(n: int) -> list[dict[str, Any]]:
 
 
 def _extract_real_cohort_csv(project_root: Path, output_path: Path) -> int:
-    script_path = project_root / "scripts" / "build_tyg_sepsis_cohort.py"
+    script_path = project_root / "scripts" / "legacy" / "build_tyg_sepsis_cohort.py"
     cmd = [
         "python3",
         str(script_path),
@@ -467,7 +471,7 @@ def _extract_real_cohort_csv(project_root: Path, output_path: Path) -> int:
 
 
 def _extract_real_analysis_dataset(project_root: Path) -> list[str]:
-    script_path = project_root / "scripts" / "build_tyg_analysis_dataset.py"
+    script_path = project_root / "scripts" / "legacy" / "build_tyg_analysis_dataset.py"
     output_rel = "shared/analysis_dataset.csv"
     missingness_rel = "shared/analysis_missingness.json"
     cmd = [
@@ -502,6 +506,46 @@ def _check_cohort_gate(actual: int, expected: int, tolerance_percent: float) -> 
     lower = expected - margin
     upper = expected + margin
     return (lower <= actual <= upper), lower, upper
+
+
+def _ordered_alignment_sections(diagnostics: dict[str, Any]) -> list[str]:
+    preferred = [
+        "cohort_alignment",
+        "baseline_alignment",
+        "supplement_baseline_alignment",
+        "cox_table_alignment",
+        "metric_alignment",
+        "km_alignment",
+        "rcs_alignment",
+    ]
+    available = [
+        name
+        for name, payload in diagnostics.items()
+        if name.endswith("_alignment") and isinstance(payload, dict)
+    ]
+    ordered = [name for name in preferred if name in available]
+    ordered.extend(sorted(name for name in available if name not in ordered))
+    return ordered
+
+
+def _ordered_report_alignment_sections(sections: dict[str, Any]) -> list[str]:
+    preferred = [
+        "paper_cohort_alignment",
+        "paper_baseline_alignment",
+        "paper_supplement_baseline_alignment",
+        "paper_cox_table_alignment",
+        "paper_km_alignment",
+        "paper_rcs_alignment",
+        "paper_metric_alignment",
+    ]
+    available = [
+        name
+        for name, payload in sections.items()
+        if name.startswith("paper_") and name.endswith("_alignment") and isinstance(payload, dict)
+    ]
+    ordered = [name for name in preferred if name in available]
+    ordered.extend(sorted(name for name in available if name not in ordered))
+    return ordered
 
 
 def _to_float(value: Any, default: float) -> float:

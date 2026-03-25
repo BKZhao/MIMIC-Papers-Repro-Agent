@@ -12,6 +12,7 @@ from .contracts import (
     AgentRun,
     ArtifactRecord,
     ExecutionMode,
+    InteractionMode,
     RunSummary,
     SessionState,
     StepResult,
@@ -19,9 +20,9 @@ from .contracts import (
     TaskContract,
 )
 from .dataset_adapters import get_dataset_adapter
-from .paper_contract import build_paper_alignment_contract
 from .paper_materials import collect_paper_materials
 from .pipeline import PaperReproPipeline
+from .preset_registry import get_paper_preset
 from .runtime import LocalRuntime
 from .skills_registry import build_skill_registry, resolve_agent_skills
 from .task_builder import find_missing_high_impact_fields, summarize_task_contract
@@ -183,6 +184,19 @@ class AgentRunner:
             "adapter_support": support.as_dict(),
             "verification_target_count": len(contract.verification_targets),
             "requested_outputs": [item.kind for item in contract.outputs],
+            "preset": {
+                "key": contract.meta.get("preset", ""),
+                "title": contract.meta.get("preset_title", ""),
+                "execution_backend": contract.meta.get("execution_backend", support.execution_backend),
+            },
+            "study_template": {
+                "key": contract.meta.get("study_template", ""),
+                "title": contract.meta.get("study_template_title", ""),
+            },
+            "semantic_mapping_summary": {
+                "mapped_variable_count": contract.meta.get("semantic_mapped_variable_count", 0),
+                "unmapped_variables": list(contract.meta.get("semantic_unmapped_variables", [])),
+            },
         }
         json_rel = f"shared/sessions/{session.session_id}/study_design.json"
         md_rel = f"shared/sessions/{session.session_id}/study_design.md"
@@ -465,6 +479,13 @@ def _guess_artifact_type(rel_path: str) -> str:
 
 def _study_design_markdown(payload: dict[str, Any]) -> str:
     support = payload.get("adapter_support", {})
+    preset = payload.get("preset", {}) if isinstance(payload.get("preset"), dict) else {}
+    template = payload.get("study_template", {}) if isinstance(payload.get("study_template"), dict) else {}
+    semantic_summary = (
+        payload.get("semantic_mapping_summary", {})
+        if isinstance(payload.get("semantic_mapping_summary"), dict)
+        else {}
+    )
     lines = [
         f"# Study Design: {payload.get('title', 'Untitled task')}",
         "",
@@ -477,6 +498,36 @@ def _study_design_markdown(payload: dict[str, Any]) -> str:
         f"- Execution supported: {support.get('execution_supported', False)}",
         f"- Execution backend: {support.get('execution_backend', 'unknown')}",
     ]
+    if preset.get("key"):
+        lines.extend(
+            [
+                "",
+                "## Preset",
+                f"- Key: {preset.get('key', '')}",
+                f"- Title: {preset.get('title', '')}",
+                f"- Execution backend: {preset.get('execution_backend', '')}",
+            ]
+        )
+    if template.get("key"):
+        lines.extend(
+            [
+                "",
+                "## Study Template",
+                f"- Key: {template.get('key', '')}",
+                f"- Title: {template.get('title', '')}",
+            ]
+        )
+    mapped_count = int(semantic_summary.get("mapped_variable_count", 0) or 0)
+    if mapped_count > 0 or semantic_summary.get("unmapped_variables"):
+        lines.extend(
+            [
+                "",
+                "## Semantic Mapping",
+                f"- Mapped variables: {mapped_count}",
+            ]
+        )
+        for item in semantic_summary.get("unmapped_variables", []):
+            lines.append(f"- Unmapped: {item}")
     missing = list(payload.get("missing_high_impact_fields", []))
     if missing:
         lines.extend(
@@ -510,19 +561,22 @@ def _study_design_markdown(payload: dict[str, Any]) -> str:
 def _build_bridge_config(config: PipelineConfig, contract: TaskContract) -> PipelineConfig:
     bridge_config = copy.deepcopy(config)
     bridge_config.run.execution_mode = ExecutionMode.DETERMINISTIC
+    bridge_config.run.interaction_mode = InteractionMode.BATCH
+    if contract.dataset.name:
+        bridge_config.run.dataset = contract.dataset.name
     if contract.source_paper_path:
         bridge_config.run.paper_path = contract.source_paper_path
     if contract.verification_targets:
         bridge_config.targets = [dict(item) for item in contract.verification_targets]
 
-    if contract.meta.get("preset") == "mimic_tyg_sepsis":
-        paper_contract = build_paper_alignment_contract()
+    preset = get_paper_preset(contract.meta.get("preset"))
+    if preset is not None:
         if not bridge_config.targets:
-            bridge_config.targets = [dict(item) for item in paper_contract.get("metric_targets", [])]
-        expected = int(dict(paper_contract.get("cohort_targets", {})).get("final_n", 0))
-        if bridge_config.quality_gates.expected_cohort_size <= 0:
-            bridge_config.quality_gates.expected_cohort_size = expected
+            bridge_config.targets = preset.verification_targets()
+        if bridge_config.quality_gates.expected_cohort_size <= 0 and preset.default_expected_cohort_size > 0:
+            bridge_config.quality_gates.expected_cohort_size = preset.default_expected_cohort_size
         if bridge_config.run.doi == "unknown":
-            bridge_config.run.doi = "10.1038/s41598-024-75050-8"
+            bridge_config.run.doi = preset.doi
+        bridge_config.run.name = preset.key
 
     return bridge_config

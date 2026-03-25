@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import socket
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
@@ -39,6 +40,7 @@ class OpenAICompatibleClient:
         model: str | None = None,
         temperature: float | None = None,
         max_tokens: int | None = None,
+        response_format: dict[str, Any] | None = None,
     ) -> LLMResponse:
         if not self.is_enabled():
             raise LLMError(f"LLM provider {self.config.provider} is not configured via {self.config.api_key_env}")
@@ -49,18 +51,24 @@ class OpenAICompatibleClient:
             "temperature": self.config.temperature if temperature is None else temperature,
             "max_tokens": self.config.max_tokens if max_tokens is None else max_tokens,
         }
+        if response_format:
+            payload["response_format"] = response_format
         req = urllib.request.Request(
             url=self.config.base_url.rstrip("/") + "/chat/completions",
             data=json.dumps(payload).encode("utf-8"),
             headers={
+                "Accept": "application/json",
                 "Content-Type": "application/json",
                 "Authorization": f"Bearer {self.api_key()}",
+                "User-Agent": "paper-repro-agent/1.0",
             },
             method="POST",
         )
         try:
             with urllib.request.urlopen(req, timeout=self.config.timeout_seconds) as response:
                 raw = json.loads(response.read().decode("utf-8"))
+        except (TimeoutError, socket.timeout) as exc:  # pragma: no cover - network path
+            raise LLMError(f"LLM request timed out after {self.config.timeout_seconds}s") from exc
         except urllib.error.HTTPError as exc:  # pragma: no cover - network path
             body = exc.read().decode("utf-8", errors="ignore")
             raise LLMError(f"LLM HTTP error {exc.code}: {body}") from exc
@@ -87,7 +95,19 @@ class OpenAICompatibleClient:
         temperature: float | None = None,
         max_tokens: int | None = None,
     ) -> tuple[dict[str, Any], LLMResponse]:
-        response = self.complete(messages, model=model, temperature=temperature, max_tokens=max_tokens)
+        try:
+            response = self.complete(
+                messages,
+                model=model,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                response_format={"type": "json_object"},
+            )
+        except LLMError as exc:
+            text = str(exc).lower()
+            if "response_format" not in text and "json_object" not in text and "400" not in text:
+                raise
+            response = self.complete(messages, model=model, temperature=temperature, max_tokens=max_tokens)
         try:
             return _extract_json_object(response.content), response
         except ValueError as exc:

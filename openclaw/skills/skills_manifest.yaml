@@ -1,0 +1,204 @@
+version: "1"
+agent_name: paper-repro-scientist
+skills:
+  paper_intake_and_contract:
+    title: Paper Intake And Contract
+    stage: paper_extraction
+    path: openclaw/skills/paper_intake_and_contract/SKILL.md
+    execution_preference: hybrid
+    purpose: Read paper materials and user instructions, then extract the study design, variables, tables, figures, and result targets into a normalized TaskContract.
+    primary_entrypoints:
+      - repro_agent.openclaw_bridge.plan_task(...)
+      - paper-repro plan-task
+    inputs:
+      - paper_path or paper_content
+      - PDF, markdown, or text paper source
+      - instructions
+      - config_path
+      - optional session_id
+      - optional use_llm
+    outputs:
+      - persisted TaskContract
+      - paper evidence summary
+      - missing_high_impact_fields
+      - execution_backend
+      - preset
+      - study_template
+      - execution_supported
+      - task_contract_path
+    reads:
+      - current paper source
+      - same-stem companion markdown or docx when present
+      - sibling table.md in legacy single-paper layout
+      - sibling si.docx in legacy single-paper layout
+      - semantic registry config when available
+    writes:
+      - shared/sessions/<session_id>/task_contract.json
+      - shared/sessions/<session_id>/session_state.json
+    guardrails:
+      - Prefer explicit paper facts over inference.
+      - Avoid cross-paper contamination from unrelated files in the same directory.
+      - If key fields are missing, return gaps instead of inventing them.
+      - Keep TaskContract as the only task schema.
+      - Never claim a non-preset paper is executable unless downstream support says so.
+    fails_when:
+      - missing paper input
+      - invalid config path
+      - LLM unavailable when explicitly requested
+      - incomplete paper causing missing high-impact fields
+  mimic_cohort_execution:
+    title: MIMIC Cohort Execution
+    stage: patient_screening
+    path: openclaw/skills/mimic_cohort_execution/SKILL.md
+    execution_preference: deterministic_preferred
+    purpose: Translate extracted cohort logic into MIMIC patient screening steps, execute supported cohort extraction, and expose missing compiler gaps for non-preset contracts.
+    primary_entrypoints:
+      - repro_agent.openclaw_bridge.run_task(...)
+      - paper-repro run-task
+    inputs:
+      - persisted TaskContract
+      - session context
+      - MIMIC PostgreSQL connectivity
+    outputs:
+      - cohort blueprint
+      - cohort funnel artifacts when available
+      - diagnostics about execution support and missing dependencies
+      - session-scoped artifact references
+    guardrails:
+      - Do not pretend arbitrary CohortSpec is executable unless a real compiler exists.
+      - Surface mimiciv_derived dependencies explicitly.
+      - Preserve cohort screening steps in session artifacts.
+    fails_when:
+      - MIMIC PostgreSQL is unreachable
+      - required schemas or derived concepts are missing
+      - contract is non-preset and no generic SQL compiler exists
+  analysis_dataset_expansion:
+    title: Analysis Dataset Expansion
+    stage: dataset_and_modeling
+    path: openclaw/skills/analysis_dataset_expansion/SKILL.md
+    execution_preference: deterministic_preferred
+    purpose: Build or plan the wide analysis dataset required for downstream modeling and record missingness outputs plus semantic mapping diagnostics.
+    primary_entrypoints:
+      - repro_agent.openclaw_bridge.extract_analysis_dataset(...)
+      - paper-repro extract-analysis-dataset
+    inputs:
+      - TaskContract
+      - cohort output or preset bridge config
+      - sepsis_source
+    outputs:
+      - analysis dataset artifact
+      - missingness report
+      - feature blueprint with semantic mapping summary
+      - unmapped-variable diagnostics
+    guardrails:
+      - Prefer deterministic local code for supported presets.
+      - Record unmapped variables instead of silently dropping them.
+      - Keep dataset field mapping visible in artifacts.
+    fails_when:
+      - required cohort artifacts are absent
+      - required variables cannot be sourced for a preset that claims full execution
+  survival_stats_execution:
+    title: Survival Stats Execution
+    stage: dataset_and_modeling
+    path: openclaw/skills/survival_stats_execution/SKILL.md
+    execution_preference: deterministic_preferred
+    purpose: Run or plan the main clinical statistics workflow, including baseline summaries, Kaplan-Meier analysis, Cox regression, restricted cubic splines, subgroup analysis, and related figures.
+    primary_entrypoints:
+      - repro_agent.openclaw_bridge.run_task(...)
+      - deterministic pipeline steps under PaperReproPipeline
+    inputs:
+      - analysis dataset
+      - TaskContract
+      - preset-specific deterministic config when available
+    outputs:
+      - baseline table
+      - model result tables
+      - KM, RCS, and subgroup artifacts
+      - stats summary diagnostics
+      - deterministic bridge summary when applicable
+      - unsupported-analysis notes
+    guardrails:
+      - Deterministic execution is preferred over LLM reasoning.
+      - If a contract is planning-only, emit model blueprints and clearly state execution is blocked.
+      - Keep produced figures and tables aligned with requested outputs.
+    fails_when:
+      - analysis dataset is missing
+      - deterministic preset pipeline fails
+      - required figures or tables cannot be produced from the available artifacts
+  result_figure_generation:
+    title: Result Figure Generation
+    stage: figure_generation
+    path: openclaw/skills/result_figure_generation/SKILL.md
+    execution_preference: deterministic_preferred
+    purpose: Generate reproduction figures from reproduced data and model outputs rather than from the original paper images.
+    primary_entrypoints:
+      - repro_agent.openclaw_bridge.run_task(...)
+      - figure-related artifact generation under AgentRunner
+    inputs:
+      - analysis dataset
+      - model outputs and diagnostics
+      - TaskContract
+      - paper figure targets when available
+    outputs:
+      - reproduced figures
+      - figure metadata
+      - blocked figure notes when the requested plot family is not yet executable
+    guardrails:
+      - Figures must be generated from reproduced data, not from OCR or screenshot manipulation.
+      - Keep figure file names and captions aligned with the requested outputs in the contract.
+      - If a requested plot family is unsupported, emit a blocked or planning-only note instead of pretending the figure was generated.
+    fails_when:
+      - required model outputs are absent
+      - figure rendering dependencies fail
+      - the requested figure type is unsupported in the current engine
+  paper_alignment_verification:
+    title: Paper Alignment Verification
+    stage: result_comparison
+    path: openclaw/skills/paper_alignment_verification/SKILL.md
+    execution_preference: hybrid
+    purpose: Compare reproduced outputs against paper-aligned targets, explain deviations at each workflow step, and mark suspicious or weakly parsed evidence instead of silently accepting it.
+    primary_entrypoints:
+      - repro_agent.openclaw_bridge.run_task(...)
+      - paper-repro run-task
+    inputs:
+      - verification targets from TaskContract
+      - produced artifacts
+      - parsed table and supplement targets
+    outputs:
+      - verification plan or diagnostics
+      - alignment summaries
+      - reproduction report support notes
+      - deviation_table.json or equivalent verification artifact
+    guardrails:
+      - Distinguish real measured deviations from missing artifacts.
+      - Flag OCR or table parsing uncertainty as suspect.
+      - Never present planning-only outputs as validated reproduction.
+    fails_when:
+      - paper targets are missing and no verification baseline can be built
+      - required output artifacts are absent
+      - quality gates exceed configured tolerance
+    success_criteria:
+      - return a machine-readable verification artifact
+      - explain whether deviations come from cohort mismatch, baseline mismatch, model mismatch, or missing artifacts
+  git_update:
+    title: Git Update
+    stage: ops
+    path: openclaw/skills/git_update/SKILL.md
+    execution_preference: controlled_side_effect
+    purpose: Provide a stable project-owned Git and GitHub update workflow so OpenClaw can request repository sync behavior without embedding Git logic into every agent prompt.
+    primary_entrypoints:
+      - scripts/git_update.sh
+      - paper-repro session artifacts for git_update_agent
+    inputs:
+      - repo working tree
+      - commit message or update intent
+    outputs:
+      - git update plan artifact
+      - repository sync side effects only when explicitly invoked
+    guardrails:
+      - Do not push automatically just because a session ran.
+      - Preserve user changes and avoid destructive git commands.
+      - Keep repository update behavior behind the fixed helper skill.
+    fails_when:
+      - git working tree is dirty in a conflicting way
+      - credentials or remote access are not available

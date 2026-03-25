@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
+
+from .paper_materials import parse_structured_paper_targets
 
 
 PAPER_TYG_QUARTILE_BOUNDS: tuple[float, float, float] = (8.56, 9.03, 9.56)
@@ -19,21 +22,21 @@ PAPER_PRIMARY_METRIC_TARGETS: list[dict[str, float]] = [
 ]
 
 PAPER_BASELINE_TARGETS: dict[str, dict[str, Any]] = {
-    "age": {"kind": "continuous_mean", "target": 63.90, "unit": "years"},
-    "weight_kg": {"kind": "continuous_mean", "target": 86.23, "unit": "kg"},
-    "height_cm": {"kind": "continuous_mean", "target": 169.90, "unit": "cm"},
-    "gender_male_pct": {"kind": "categorical_pct", "target": 57.23, "unit": "%"},
-    "white_blood_cell_count": {"kind": "continuous_mean", "target": 13.48, "unit": "10^9/L"},
-    "albumin": {"kind": "continuous_mean", "target": 3.08, "unit": "g/L"},
-    "blood_glucose": {"kind": "continuous_mean", "target": 151.31, "unit": "mg/dL"},
-    "hba1c": {"kind": "continuous_mean", "target": 6.24, "unit": "%"},
-    "triglycerides": {"kind": "continuous_mean", "target": 186.48, "unit": "mg/dL"},
-    "type2_diabetes_pct": {"kind": "categorical_pct", "target": 26.81, "unit": "%"},
-    "hypertension_pct": {"kind": "categorical_pct", "target": 43.74, "unit": "%"},
-    "heart_failure_pct": {"kind": "categorical_pct", "target": 27.04, "unit": "%"},
-    "sofa_score": {"kind": "continuous_mean", "target": 6.62, "unit": "score"},
-    "apache_iii_score": {"kind": "continuous_mean", "target": 53.81, "unit": "score"},
-    "saps_ii_score": {"kind": "continuous_mean", "target": 40.91, "unit": "score"},
+    "age": {"kind": "continuous_mean", "target": 63.90, "unit": "years", "source_file": "papers/table.md"},
+    "weight_kg": {"kind": "continuous_mean", "target": 86.23, "unit": "kg", "source_file": "papers/table.md"},
+    "height_cm": {"kind": "continuous_mean", "target": 169.90, "unit": "cm", "source_file": "papers/table.md"},
+    "gender_male_pct": {"kind": "categorical_pct", "target": 57.23, "unit": "%", "source_file": "papers/table.md"},
+    "white_blood_cell_count": {"kind": "continuous_mean", "target": 13.48, "unit": "10^9/L", "source_file": "papers/table.md"},
+    "albumin": {"kind": "continuous_mean", "target": 3.08, "unit": "g/L", "source_file": "papers/table.md"},
+    "blood_glucose": {"kind": "continuous_mean", "target": 151.31, "unit": "mg/dL", "source_file": "papers/table.md"},
+    "hba1c": {"kind": "continuous_mean", "target": 6.24, "unit": "%", "source_file": "papers/table.md"},
+    "triglycerides": {"kind": "continuous_mean", "target": 186.48, "unit": "mg/dL", "source_file": "papers/table.md"},
+    "type2_diabetes_pct": {"kind": "categorical_pct", "target": 26.81, "unit": "%", "source_file": "papers/table.md"},
+    "hypertension_pct": {"kind": "categorical_pct", "target": 43.74, "unit": "%", "source_file": "papers/table.md"},
+    "heart_failure_pct": {"kind": "categorical_pct", "target": 27.04, "unit": "%", "source_file": "papers/table.md"},
+    "sofa_score": {"kind": "continuous_mean", "target": 6.62, "unit": "score", "source_file": "papers/table.md"},
+    "apache_iii_score": {"kind": "continuous_mean", "target": 53.81, "unit": "score", "source_file": "papers/table.md"},
+    "saps_ii_score": {"kind": "continuous_mean", "target": 40.91, "unit": "score", "source_file": "papers/table.md"},
 }
 
 PAPER_KM_TARGETS: dict[str, float] = {
@@ -77,8 +80,11 @@ PAPER_SUSPECT_METRICS: list[str] = [
 ]
 
 
-def build_paper_alignment_contract() -> dict[str, Any]:
-    return {
+def build_paper_alignment_contract(project_root: Path | None = None) -> dict[str, Any]:
+    root = project_root or Path(__file__).resolve().parents[2]
+    parsed_targets = parse_structured_paper_targets(root / "papers" / "MIMIC.md")
+
+    contract = {
         "name": "mimic_iv_tyg_sepsis_alignment",
         "source_files": [
             "papers/MIMIC.md",
@@ -96,17 +102,23 @@ def build_paper_alignment_contract() -> dict[str, Any]:
             },
             "tyg_quartile_target_counts": PAPER_TYG_QUARTILE_TARGET_COUNTS,
         },
-        "baseline_targets": PAPER_BASELINE_TARGETS,
-        "metric_targets": PAPER_PRIMARY_METRIC_TARGETS,
-        "km_targets": PAPER_KM_TARGETS,
-        "figure_targets": PAPER_FIGURE_TARGETS,
-        "rcs_targets": PAPER_RCS_TARGETS,
-        "suspect_metrics": PAPER_SUSPECT_METRICS,
+        "baseline_targets": dict(PAPER_BASELINE_TARGETS),
+        "supplement_baseline_targets": {},
+        "metric_targets": list(PAPER_PRIMARY_METRIC_TARGETS),
+        "cox_table_targets": [],
+        "km_targets": dict(PAPER_KM_TARGETS),
+        "figure_targets": dict(PAPER_FIGURE_TARGETS),
+        "rcs_targets": dict(PAPER_RCS_TARGETS),
+        "suspect_metrics": list(PAPER_SUSPECT_METRICS),
+        "parsed_target_counts": {},
         "notes": [
             "Main truth source is papers/MIMIC.md, cross-checked with papers/table.md and papers/si.docx.",
             "In-hospital Model 3 quartile values that reverse direction are treated as suspect OCR/table transcription artifacts.",
         ],
     }
+
+    _merge_contract_targets(contract, parsed_targets)
+    return contract
 
 
 def assign_paper_tyg_quartile(tyg_index: float | None) -> str | None:
@@ -120,3 +132,101 @@ def assign_paper_tyg_quartile(tyg_index: float | None) -> str | None:
     if tyg_index <= q3_max:
         return "Q3"
     return "Q4"
+
+
+def _merge_contract_targets(contract: dict[str, Any], parsed_targets: dict[str, Any]) -> None:
+    if not parsed_targets:
+        return
+
+    source_files = list(contract.get("source_files", []))
+    for item in parsed_targets.get("source_files", []):
+        if item not in source_files:
+            source_files.append(item)
+    contract["source_files"] = source_files
+
+    cohort_targets = dict(contract.get("cohort_targets", {}))
+    cohort_targets.update(dict(parsed_targets.get("cohort_targets", {})))
+    contract["cohort_targets"] = cohort_targets
+
+    baseline_targets = dict(contract.get("baseline_targets", {}))
+    baseline_targets.update(dict(parsed_targets.get("baseline_targets", {})))
+    contract["baseline_targets"] = baseline_targets
+
+    contract["supplement_baseline_targets"] = dict(parsed_targets.get("supplement_baseline_targets", {}))
+    contract["cox_table_targets"] = list(parsed_targets.get("cox_table_targets", []))
+
+    km_targets = dict(contract.get("km_targets", {}))
+    km_targets.update(dict(parsed_targets.get("km_targets", {})))
+    contract["km_targets"] = km_targets
+
+    rcs_targets = dict(contract.get("rcs_targets", {}))
+    rcs_targets.update(dict(parsed_targets.get("rcs_targets", {})))
+    contract["rcs_targets"] = rcs_targets
+
+    metric_targets = _derive_primary_metric_targets(
+        cox_table_targets=contract["cox_table_targets"],
+        rcs_targets=contract["rcs_targets"],
+        fallbacks=list(contract.get("metric_targets", [])),
+    )
+    contract["metric_targets"] = metric_targets
+    contract["parsed_target_counts"] = dict(parsed_targets.get("parsed_target_counts", {}))
+
+    notes = list(contract.get("notes", []))
+    for note in parsed_targets.get("notes", []):
+        if note not in notes:
+            notes.append(note)
+    if contract["supplement_baseline_targets"]:
+        notes.append("Supplementary baseline targets are now part of structured verification.")
+    if contract["cox_table_targets"]:
+        notes.append("Structured Cox targets parsed from papers/table.md are included in verification.")
+    contract["notes"] = notes
+
+
+def _derive_primary_metric_targets(
+    cox_table_targets: list[dict[str, Any]],
+    rcs_targets: dict[str, dict[str, float]],
+    fallbacks: list[dict[str, Any]],
+) -> list[dict[str, float]]:
+    fallback_map = {str(item.get("metric")): float(item.get("target")) for item in fallbacks if item.get("metric") and item.get("target") is not None}
+    target_map = dict(fallback_map)
+
+    desired = {
+        "in_hospital_q4_m1_hr": ("hospital", "cox_m1_quartile_unadjusted", "Q4_vs_Q1"),
+        "icu_q4_m1_hr": ("icu", "cox_m1_quartile_unadjusted", "Q4_vs_Q1"),
+        "icu_q4_m3_hr": ("icu", "cox_m3_quartile_adjusted", "Q4_vs_Q1"),
+    }
+    for metric_name, key in desired.items():
+        parsed = _lookup_cox_target(cox_table_targets, *key)
+        if parsed is not None:
+            target_map[metric_name] = parsed
+
+    inflection = dict(rcs_targets.get("hospital_adjusted", {})).get("inflection")
+    if inflection is None:
+        inflection = dict(rcs_targets.get("icu_adjusted", {})).get("inflection")
+    if inflection is not None:
+        target_map["rcs_inflection"] = float(inflection)
+
+    ordered_metrics = ("in_hospital_q4_m1_hr", "icu_q4_m1_hr", "icu_q4_m3_hr", "rcs_inflection")
+    return [
+        {"metric": metric_name, "target": float(target_map[metric_name])}
+        for metric_name in ordered_metrics
+        if metric_name in target_map
+    ]
+
+
+def _lookup_cox_target(
+    cox_table_targets: list[dict[str, Any]],
+    endpoint: str,
+    model: str,
+    term: str,
+) -> float | None:
+    for item in cox_table_targets:
+        if (
+            str(item.get("endpoint")) == endpoint
+            and str(item.get("model")) == model
+            and str(item.get("term")) == term
+        ):
+            value = item.get("hazard_ratio")
+            if value is not None:
+                return float(value)
+    return None

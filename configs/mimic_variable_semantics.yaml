@@ -1,0 +1,474 @@
+dataset: mimic_iv
+version: 2026-03-25
+
+categories:
+  identifiers:
+    subject_id:
+      aliases: [subject id]
+      dataset_field: analysis_dataset.subject_id
+      source_name: analysis_dataset.subject_id
+      description: MIMIC patient identifier.
+    hadm_id:
+      aliases: [hospital admission id, hospital_id]
+      dataset_field: analysis_dataset.hadm_id
+      source_name: analysis_dataset.hadm_id
+      description: Hospital admission identifier.
+    stay_id:
+      aliases: [icu stay id, icustay_id]
+      dataset_field: analysis_dataset.stay_id
+      source_name: analysis_dataset.stay_id
+      description: ICU stay identifier.
+
+  demographics:
+    age:
+      aliases: [anchor_age, age_years]
+      dataset_field: analysis_dataset.age
+      source_name: patients.anchor_age
+      description: Age in years at cohort entry.
+    gender:
+      aliases: [sex]
+      dataset_field: analysis_dataset.gender
+      source_name: patients.gender
+      description: Administrative sex recorded in MIMIC.
+    race:
+      aliases: [ethnicity]
+      dataset_field: analysis_dataset.race
+      source_name: admissions.race
+      description: Race or ethnicity from hospital admission.
+    insurance:
+      aliases: [payer]
+      dataset_field: analysis_dataset.insurance
+      source_name: admissions.insurance
+      description: Insurance category at admission.
+    marital_status:
+      aliases: [marriage]
+      dataset_field: analysis_dataset.marital_status
+      source_name: admissions.marital_status
+      description: Marital status at admission.
+    height_cm:
+      aliases: [height, body_height]
+      dataset_field: analysis_dataset.height_cm
+      source_name: analysis_dataset.height_cm
+      description: Height in centimeters.
+    weight_kg:
+      aliases: [weight, body_weight]
+      dataset_field: analysis_dataset.weight_kg
+      source_name: analysis_dataset.weight_kg
+      description: Weight in kilograms.
+    bmi:
+      aliases: [body_mass_index]
+      dataset_field: analysis_dataset.bmi
+      source_name: analysis_dataset.bmi
+      description: Body mass index derived from height and weight.
+
+  comorbidities:
+    hypertension:
+      aliases: [htn]
+      dataset_field: analysis_dataset.hypertension
+      source_name: analysis_dataset.hypertension
+      description: Hypertension comorbidity flag.
+    type2_diabetes:
+      aliases: [t2dm, diabetes]
+      dataset_field: analysis_dataset.type2_diabetes
+      source_name: analysis_dataset.type2_diabetes
+      description: Type 2 diabetes comorbidity flag.
+    heart_failure:
+      aliases: [congestive_heart_failure, chf]
+      dataset_field: analysis_dataset.heart_failure
+      source_name: analysis_dataset.heart_failure
+      description: Heart failure comorbidity flag.
+    myocardial_infarction:
+      aliases: [mi]
+      dataset_field: analysis_dataset.myocardial_infarction
+      source_name: analysis_dataset.myocardial_infarction
+      description: Myocardial infarction history flag.
+    malignant_tumor:
+      aliases: [cancer, malignancy]
+      dataset_field: analysis_dataset.malignant_tumor
+      source_name: analysis_dataset.malignant_tumor
+      description: Malignant tumor history flag.
+    chronic_renal_failure:
+      aliases: [ckd, chronic_kidney_disease]
+      dataset_field: analysis_dataset.chronic_renal_failure
+      source_name: analysis_dataset.chronic_renal_failure
+      description: Chronic renal failure history flag.
+    acute_renal_failure:
+      aliases: [aki, arf]
+      dataset_field: analysis_dataset.acute_renal_failure
+      source_name: analysis_dataset.acute_renal_failure
+      description: Acute renal failure flag.
+    cirrhosis:
+      aliases: [liver_cirrhosis]
+      dataset_field: analysis_dataset.cirrhosis
+      source_name: analysis_dataset.cirrhosis
+      description: Cirrhosis history flag.
+    hepatitis:
+      aliases: [hepatitis_history]
+      dataset_field: analysis_dataset.hepatitis
+      source_name: analysis_dataset.hepatitis
+      description: Hepatitis history flag.
+    tuberculosis:
+      aliases: [tb]
+      dataset_field: analysis_dataset.tuberculosis
+      source_name: analysis_dataset.tuberculosis
+      description: Tuberculosis history flag.
+    pneumonia:
+      aliases: [pulmonary_infection]
+      dataset_field: analysis_dataset.pneumonia
+      source_name: analysis_dataset.pneumonia
+      description: Pneumonia history flag.
+    copd:
+      aliases: [chronic_obstructive_pulmonary_disease]
+      dataset_field: analysis_dataset.copd
+      source_name: analysis_dataset.copd
+      description: COPD history flag.
+    hyperlipidemia:
+      aliases: [dyslipidemia]
+      dataset_field: analysis_dataset.hyperlipidemia
+      source_name: analysis_dataset.hyperlipidemia
+      description: Hyperlipidemia history flag.
+    stroke:
+      aliases: [cerebrovascular_disease]
+      dataset_field: analysis_dataset.stroke
+      source_name: analysis_dataset.stroke
+      description: Stroke history flag.
+
+  laboratory:
+    white_blood_cell_count:
+      aliases: [wbc, white blood cell count]
+      dataset_field: analysis_dataset.white_blood_cell_count
+      source_name: analysis_dataset.white_blood_cell_count
+      description: White blood cell count.
+    red_blood_cell_count:
+      aliases: [rbc, red blood cell count]
+      dataset_field: analysis_dataset.red_blood_cell_count
+      source_name: analysis_dataset.red_blood_cell_count
+      description: Red blood cell count.
+    neutrophil_count:
+      aliases: [neutrophils]
+      dataset_field: analysis_dataset.neutrophil_count
+      source_name: analysis_dataset.neutrophil_count
+      description: Neutrophil count.
+    lymphocyte_count:
+      aliases: [lymphocytes]
+      dataset_field: analysis_dataset.lymphocyte_count
+      source_name: analysis_dataset.lymphocyte_count
+      description: Lymphocyte count.
+    platelet_count:
+      aliases: [platelets, plt]
+      dataset_field: analysis_dataset.platelet_count
+      source_name: analysis_dataset.platelet_count
+      description: Platelet count.
+    hemoglobin_count:
+      aliases: [hemoglobin, hgb]
+      dataset_field: analysis_dataset.hemoglobin_count
+      source_name: analysis_dataset.hemoglobin_count
+      description: Hemoglobin concentration.
+    mean_corpuscular_volume:
+      aliases: [mcv]
+      dataset_field: analysis_dataset.mean_corpuscular_volume
+      source_name: analysis_dataset.mean_corpuscular_volume
+      description: Mean corpuscular volume.
+    hematocrit:
+      aliases: [hct]
+      dataset_field: analysis_dataset.hematocrit
+      source_name: analysis_dataset.hematocrit
+      description: Hematocrit.
+    albumin:
+      aliases: [serum_albumin]
+      dataset_field: analysis_dataset.albumin
+      source_name: analysis_dataset.albumin
+      description: Serum albumin.
+    globulin:
+      aliases: [serum_globulin]
+      dataset_field: analysis_dataset.globulin
+      source_name: analysis_dataset.globulin
+      description: Serum globulin.
+    total_protein:
+      aliases: [protein_total]
+      dataset_field: analysis_dataset.total_protein
+      source_name: analysis_dataset.total_protein
+      description: Total protein.
+    sodium:
+      aliases: [na]
+      dataset_field: analysis_dataset.sodium
+      source_name: analysis_dataset.sodium
+      description: Serum sodium.
+    potassium:
+      aliases: [k]
+      dataset_field: analysis_dataset.potassium
+      source_name: analysis_dataset.potassium
+      description: Serum potassium.
+    calcium:
+      aliases: [serum_calcium]
+      dataset_field: analysis_dataset.calcium
+      source_name: analysis_dataset.calcium
+      description: Serum calcium.
+    chloride:
+      aliases: [cl]
+      dataset_field: analysis_dataset.chloride
+      source_name: analysis_dataset.chloride
+      description: Serum chloride.
+    blood_glucose:
+      aliases: [glucose, fasting_blood_glucose, fbg]
+      dataset_field: analysis_dataset.blood_glucose
+      source_name: analysis_dataset.blood_glucose
+      description: Blood glucose in mg/dL.
+    hba1c:
+      aliases: [glycosylated_hemoglobin]
+      dataset_field: analysis_dataset.hba1c
+      source_name: analysis_dataset.hba1c
+      description: Glycosylated hemoglobin.
+    anion_gap:
+      aliases: [aniongap]
+      dataset_field: analysis_dataset.anion_gap
+      source_name: analysis_dataset.anion_gap
+      description: Anion gap.
+    blood_ph:
+      aliases: [ph]
+      dataset_field: analysis_dataset.blood_ph
+      source_name: analysis_dataset.blood_ph
+      description: Blood pH.
+    arterial_pco2:
+      aliases: [pco2]
+      dataset_field: analysis_dataset.arterial_pco2
+      source_name: analysis_dataset.arterial_pco2
+      description: Arterial partial pressure of carbon dioxide.
+    arterial_po2:
+      aliases: [po2]
+      dataset_field: analysis_dataset.arterial_po2
+      source_name: analysis_dataset.arterial_po2
+      description: Arterial partial pressure of oxygen.
+    lactate:
+      aliases: [serum_lactate]
+      dataset_field: analysis_dataset.lactate
+      source_name: analysis_dataset.lactate
+      description: Serum lactate.
+    total_carbon_dioxide:
+      aliases: [tco2, total_co2]
+      dataset_field: analysis_dataset.total_carbon_dioxide
+      source_name: analysis_dataset.total_carbon_dioxide
+      description: Total carbon dioxide.
+    thrombin_time:
+      aliases: [tt]
+      dataset_field: analysis_dataset.thrombin_time
+      source_name: analysis_dataset.thrombin_time
+      description: Thrombin time.
+    fibrinogen:
+      aliases: [fib]
+      dataset_field: analysis_dataset.fibrinogen
+      source_name: analysis_dataset.fibrinogen
+      description: Fibrinogen.
+    partial_thromboplastin_time:
+      aliases: [ptt, activated_partial_thromboplastin_time]
+      dataset_field: analysis_dataset.partial_thromboplastin_time
+      source_name: analysis_dataset.partial_thromboplastin_time
+      description: Partial thromboplastin time.
+    international_normalized_ratio:
+      aliases: [inr]
+      dataset_field: analysis_dataset.international_normalized_ratio
+      source_name: analysis_dataset.international_normalized_ratio
+      description: INR.
+    d_dimer:
+      aliases: [ddimer]
+      dataset_field: analysis_dataset.d_dimer
+      source_name: analysis_dataset.d_dimer
+      description: D-dimer.
+    triglycerides:
+      aliases: [tg, triglyceride]
+      dataset_field: analysis_dataset.triglycerides
+      source_name: analysis_dataset.triglycerides
+      description: Triglycerides in mg/dL.
+    total_cholesterol:
+      aliases: [tc]
+      dataset_field: analysis_dataset.total_cholesterol
+      source_name: analysis_dataset.total_cholesterol
+      description: Total cholesterol.
+    high_density_lipoprotein:
+      aliases: [hdl, hdl_c]
+      dataset_field: analysis_dataset.high_density_lipoprotein
+      source_name: analysis_dataset.high_density_lipoprotein
+      description: High-density lipoprotein cholesterol.
+    low_density_lipoprotein:
+      aliases: [ldl, ldl_c]
+      dataset_field: analysis_dataset.low_density_lipoprotein
+      source_name: analysis_dataset.low_density_lipoprotein
+      description: Low-density lipoprotein cholesterol.
+    total_bilirubin:
+      aliases: [tbil]
+      dataset_field: analysis_dataset.total_bilirubin
+      source_name: analysis_dataset.total_bilirubin
+      description: Total bilirubin.
+    direct_bilirubin:
+      aliases: [dbil]
+      dataset_field: analysis_dataset.direct_bilirubin
+      source_name: analysis_dataset.direct_bilirubin
+      description: Direct bilirubin.
+    indirect_bilirubin:
+      aliases: [ibil]
+      dataset_field: analysis_dataset.indirect_bilirubin
+      source_name: analysis_dataset.indirect_bilirubin
+      description: Indirect bilirubin.
+    aspartate_aminotransferase:
+      aliases: [ast]
+      dataset_field: analysis_dataset.aspartate_aminotransferase
+      source_name: analysis_dataset.aspartate_aminotransferase
+      description: Aspartate aminotransferase.
+    alanine_aminotransferase:
+      aliases: [alt]
+      dataset_field: analysis_dataset.alanine_aminotransferase
+      source_name: analysis_dataset.alanine_aminotransferase
+      description: Alanine aminotransferase.
+    urea_nitrogen:
+      aliases: [bun, blood_urea_nitrogen]
+      dataset_field: analysis_dataset.urea_nitrogen
+      source_name: analysis_dataset.urea_nitrogen
+      description: Urea nitrogen.
+    creatinine:
+      aliases: [scr, serum_creatinine]
+      dataset_field: analysis_dataset.creatinine
+      source_name: analysis_dataset.creatinine
+      description: Serum creatinine.
+    lactate_dehydrogenase:
+      aliases: [ldh]
+      dataset_field: analysis_dataset.lactate_dehydrogenase
+      source_name: analysis_dataset.lactate_dehydrogenase
+      description: Lactate dehydrogenase.
+    creatine_kinase:
+      aliases: [ck]
+      dataset_field: analysis_dataset.creatine_kinase
+      source_name: analysis_dataset.creatine_kinase
+      description: Creatine kinase.
+    creatine_kinase_isoenzyme:
+      aliases: [ck_mb, creatine_kinase_mb]
+      dataset_field: analysis_dataset.creatine_kinase_isoenzyme
+      source_name: analysis_dataset.creatine_kinase_isoenzyme
+      description: Creatine kinase isoenzyme.
+    troponin_t:
+      aliases: [troponin]
+      dataset_field: analysis_dataset.troponin_t
+      source_name: analysis_dataset.troponin_t
+      description: Troponin T.
+    ntprobnp:
+      aliases: [nt_pro_bnp, nt-probnp]
+      dataset_field: analysis_dataset.ntprobnp
+      source_name: analysis_dataset.ntprobnp
+      description: N-terminal pro-B-type natriuretic peptide precursor.
+    urinary_sugar:
+      aliases: [urine_glucose]
+      dataset_field: analysis_dataset.urinary_sugar
+      source_name: analysis_dataset.urinary_sugar
+      description: Urinary sugar.
+    urinary_albumin:
+      aliases: [urine_albumin]
+      dataset_field: analysis_dataset.urinary_albumin
+      source_name: analysis_dataset.urinary_albumin
+      description: Urinary albumin.
+
+  treatments:
+    continuous_renal_replacement_therapy:
+      aliases: [crrt]
+      dataset_field: analysis_dataset.continuous_renal_replacement_therapy
+      source_name: analysis_dataset.continuous_renal_replacement_therapy
+      description: Continuous renal replacement therapy during ICU stay.
+    mechanical_ventilation:
+      aliases: [mv, ventilator]
+      dataset_field: analysis_dataset.mechanical_ventilation
+      source_name: analysis_dataset.mechanical_ventilation
+      description: Mechanical ventilation during ICU stay.
+
+  scores:
+    sofa_score:
+      aliases: [sofa]
+      dataset_field: analysis_dataset.sofa_score
+      source_name: analysis_dataset.sofa_score
+      description: Sequential Organ Failure Assessment score.
+    apache_iii_score:
+      aliases: [apache iii, apsiii]
+      dataset_field: analysis_dataset.apache_iii_score
+      source_name: analysis_dataset.apache_iii_score
+      description: APACHE III score.
+    saps_ii_score:
+      aliases: [saps ii, sapsii]
+      dataset_field: analysis_dataset.saps_ii_score
+      source_name: analysis_dataset.saps_ii_score
+      description: SAPS II score.
+    oasis_score:
+      aliases: [oasis]
+      dataset_field: analysis_dataset.oasis_score
+      source_name: analysis_dataset.oasis_score
+      description: OASIS score.
+    charlson_score:
+      aliases: [charlson, charlson_comorbidity_index]
+      dataset_field: analysis_dataset.charlson_score
+      source_name: analysis_dataset.charlson_score
+      description: Charlson comorbidity score.
+    sirs_score:
+      aliases: [sirs]
+      dataset_field: analysis_dataset.sirs_score
+      source_name: analysis_dataset.sirs_score
+      description: SIRS score.
+    gcs_score:
+      aliases: [gcs, glasgow_coma_scale]
+      dataset_field: analysis_dataset.gcs_score
+      source_name: analysis_dataset.gcs_score
+      description: Glasgow Coma Scale score.
+
+  outcomes:
+    in_hospital_mortality:
+      aliases: [hospital_mortality, in-hospital mortality]
+      dataset_field: analysis_dataset.in_hospital_mortality
+      source_name: analysis_dataset.in_hospital_mortality
+      description: In-hospital mortality endpoint.
+    icu_mortality:
+      aliases: [icu death, icu_mortality]
+      dataset_field: analysis_dataset.icu_mortality
+      source_name: analysis_dataset.icu_mortality
+      description: ICU mortality endpoint.
+    hospital_survival_hours:
+      aliases: [hospital_survival_time, hospital_time]
+      dataset_field: analysis_dataset.hospital_survival_hours
+      source_name: analysis_dataset.hospital_survival_hours
+      description: Survival time from admission until hospital death or discharge.
+    icu_survival_hours:
+      aliases: [icu_survival_time, icu_time]
+      dataset_field: analysis_dataset.icu_survival_hours
+      source_name: analysis_dataset.icu_survival_hours
+      description: Survival time from ICU admission until ICU death or discharge.
+    hospital_los_hours:
+      aliases: [hospital_stay, hospital_los]
+      dataset_field: analysis_dataset.hospital_los_hours
+      source_name: analysis_dataset.hospital_los_hours
+      description: Hospital length of stay in hours.
+    icu_los_hours:
+      aliases: [icu_stay, icu_los]
+      dataset_field: analysis_dataset.icu_los_hours
+      source_name: analysis_dataset.icu_los_hours
+      description: ICU length of stay in hours.
+
+  derived:
+    tyg_index:
+      aliases: [tyg, triglyceride_glucose_index]
+      dataset_field: analysis_dataset.tyg_index
+      source_name: analysis_dataset.tyg_index
+      description: ln(triglycerides * blood_glucose / 2).
+    tyg_quartile:
+      aliases: [tyg_group, tyg_q]
+      dataset_field: analysis_dataset.tyg_quartile
+      source_name: analysis_dataset.tyg_quartile
+      description: Quartile grouping of TyG index.
+    sepsis3_flag:
+      aliases: [sepsis3, sepsis_3]
+      dataset_field: analysis_dataset.sepsis3_flag
+      source_name: mimiciv_derived.sepsis3.sepsis3
+      description: Sepsis-3 cohort membership flag.
+    suspected_infection_time:
+      aliases: [infection_time]
+      dataset_field: analysis_dataset.suspected_infection_time
+      source_name: mimiciv_derived.sepsis3.suspected_infection_time
+      description: Suspected infection timestamp from derived sepsis concept.
+    sepsis3_sofa_score:
+      aliases: [sepsis_sofa_score]
+      dataset_field: analysis_dataset.sepsis3_sofa_score
+      source_name: analysis_dataset.sepsis3_sofa_score
+      description: SOFA score associated with the Sepsis-3 derived concept.

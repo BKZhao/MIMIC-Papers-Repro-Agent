@@ -4,9 +4,12 @@ from dataclasses import dataclass
 
 from .cohort_sql import (
     GLUCOSE_ITEMIDS,
+    NLR_QUARTILE_BOUNDS,
+    PAPER_MIMIC_NLR_PROFILE,
     PAPER_MIMIC_TYG_PROFILE,
     TG_ITEMIDS,
     TygSepsisCohortProfile,
+    build_nlr_sepsis_cohort_sql,
     build_tyg_sepsis_cohort_sql,
 )
 
@@ -607,6 +610,314 @@ LEFT JOIN crrt_flag
     ON crrt_flag.stay_id = c.stay_id
 LEFT JOIN ventilation_flag
     ON ventilation_flag.stay_id = c.stay_id
+ORDER BY c.stay_id
+"""
+
+
+def build_nlr_analysis_dataset_sql(
+    mode: str,
+    has_sepsis3_flag: bool,
+    profile: TygSepsisCohortProfile = PAPER_MIMIC_NLR_PROFILE,
+) -> str:
+    cohort_sql = build_nlr_sepsis_cohort_sql(mode=mode, has_sepsis3_flag=has_sepsis3_flag, profile=profile)
+    q1_max, q2_max, q3_max = NLR_QUARTILE_BOUNDS
+    return f"""
+WITH cohort AS (
+{_indent_sql(cohort_sql, 4)}
+),
+cohort_ctx AS (
+    SELECT
+        c.*,
+        i.intime,
+        i.outtime,
+        a.admittime,
+        a.dischtime,
+        a.insurance,
+        a.marital_status
+    FROM cohort c
+    JOIN mimiciv_icu.icustays i
+        ON i.stay_id = c.stay_id
+    JOIN mimiciv_hosp.admissions a
+        ON a.hadm_id = c.hadm_id
+),
+cbc_raw AS (
+    SELECT
+        c.hadm_id,
+        d.charttime,
+        d.specimen_id,
+        d.wbc,
+        d.rbc,
+        d.platelet,
+        d.hemoglobin
+    FROM cohort_ctx c
+    JOIN mimiciv_derived.complete_blood_count d
+        ON d.hadm_id = c.hadm_id
+    WHERE d.charttime >= {_lab_window_lower_bound_sql("c", profile)}
+      AND d.charttime <= {_lab_window_upper_bound_sql("c", profile)}
+),
+cbc AS (
+    SELECT DISTINCT ON (hadm_id)
+        hadm_id,
+        wbc,
+        rbc,
+        platelet,
+        hemoglobin
+    FROM cbc_raw
+    ORDER BY hadm_id, charttime NULLS LAST, specimen_id NULLS LAST
+),
+chem_raw AS (
+    SELECT
+        c.hadm_id,
+        d.charttime,
+        d.specimen_id,
+        d.bun,
+        d.calcium,
+        d.creatinine,
+        d.glucose,
+        d.sodium,
+        d.potassium
+    FROM cohort_ctx c
+    JOIN mimiciv_derived.chemistry d
+        ON d.hadm_id = c.hadm_id
+    WHERE d.charttime >= {_lab_window_lower_bound_sql("c", profile)}
+      AND d.charttime <= {_lab_window_upper_bound_sql("c", profile)}
+),
+chem AS (
+    SELECT DISTINCT ON (hadm_id)
+        hadm_id,
+        bun,
+        calcium,
+        creatinine,
+        glucose,
+        sodium,
+        potassium
+    FROM chem_raw
+    ORDER BY hadm_id, charttime NULLS LAST, specimen_id NULLS LAST
+),
+bg_raw AS (
+    SELECT
+        c.hadm_id,
+        d.charttime,
+        d.calcium,
+        d.glucose,
+        d.potassium,
+        d.ph,
+        d.lactate
+    FROM cohort_ctx c
+    JOIN mimiciv_derived.bg d
+        ON d.hadm_id = c.hadm_id
+    WHERE d.charttime >= {_lab_window_lower_bound_sql("c", profile)}
+      AND d.charttime <= {_lab_window_upper_bound_sql("c", profile)}
+),
+bg AS (
+    SELECT DISTINCT ON (hadm_id)
+        hadm_id,
+        calcium,
+        glucose,
+        potassium,
+        ph,
+        lactate
+    FROM bg_raw
+    ORDER BY hadm_id, charttime NULLS LAST
+),
+coag_raw AS (
+    SELECT
+        c.hadm_id,
+        d.charttime,
+        d.specimen_id,
+        d.inr
+    FROM cohort_ctx c
+    JOIN mimiciv_derived.coagulation d
+        ON d.hadm_id = c.hadm_id
+    WHERE d.charttime >= {_lab_window_lower_bound_sql("c", profile)}
+      AND d.charttime <= {_lab_window_upper_bound_sql("c", profile)}
+),
+coag AS (
+    SELECT DISTINCT ON (hadm_id)
+        hadm_id,
+        inr
+    FROM coag_raw
+    ORDER BY hadm_id, charttime NULLS LAST, specimen_id NULLS LAST
+),
+enzyme_raw AS (
+    SELECT
+        c.hadm_id,
+        d.charttime,
+        d.specimen_id,
+        d.alt
+    FROM cohort_ctx c
+    JOIN mimiciv_derived.enzyme d
+        ON d.hadm_id = c.hadm_id
+    WHERE d.charttime >= {_lab_window_lower_bound_sql("c", profile)}
+      AND d.charttime <= {_lab_window_upper_bound_sql("c", profile)}
+),
+enzyme AS (
+    SELECT DISTINCT ON (hadm_id)
+        hadm_id,
+        alt
+    FROM enzyme_raw
+    ORDER BY hadm_id, charttime NULLS LAST, specimen_id NULLS LAST
+),
+charlson_flags AS (
+    SELECT
+        c.hadm_id,
+        COALESCE(ch.myocardial_infarct, 0) AS myocardial_infarct,
+        COALESCE(ch.congestive_heart_failure, 0) AS congestive_heart_failure,
+        COALESCE(ch.cerebrovascular_disease, 0) AS cerebrovascular_disease,
+        COALESCE(ch.chronic_pulmonary_disease, 0) AS chronic_pulmonary_disease,
+        COALESCE(ch.mild_liver_disease, 0) AS mild_liver_disease,
+        COALESCE(ch.severe_liver_disease, 0) AS severe_liver_disease,
+        COALESCE(ch.renal_disease, 0) AS renal_disease,
+        COALESCE(ch.diabetes_without_cc, 0) AS diabetes_without_cc,
+        COALESCE(ch.diabetes_with_cc, 0) AS diabetes_with_cc
+    FROM cohort_ctx c
+    LEFT JOIN mimiciv_derived.charlson ch
+        ON ch.hadm_id = c.hadm_id
+),
+rrt_flag AS (
+    SELECT DISTINCT
+        c.stay_id,
+        1 AS renal_replacement_therapy
+    FROM cohort_ctx c
+    JOIN mimiciv_derived.rrt d
+        ON d.stay_id = c.stay_id
+    WHERE d.charttime >= c.intime
+      AND d.charttime <= c.outtime
+      AND COALESCE(d.dialysis_present, 0) = 1
+),
+ventilation_flag AS (
+    SELECT DISTINCT
+        c.stay_id,
+        1 AS mechanical_ventilation
+    FROM cohort_ctx c
+    JOIN mimiciv_derived.ventilation d
+        ON d.stay_id = c.stay_id
+    WHERE d.starttime <= c.outtime
+      AND COALESCE(d.endtime, c.outtime) >= c.intime
+      AND COALESCE(d.ventilation_status, '') <> ''
+),
+vasopressor_flag AS (
+    SELECT DISTINCT
+        c.stay_id,
+        1 AS vasopressor_use
+    FROM cohort_ctx c
+    JOIN mimiciv_derived.vasoactive_agent d
+        ON d.stay_id = c.stay_id
+    WHERE d.starttime <= c.outtime
+      AND COALESCE(d.endtime, c.outtime) >= c.intime
+      AND (
+          d.dopamine IS NOT NULL
+          OR d.epinephrine IS NOT NULL
+          OR d.norepinephrine IS NOT NULL
+          OR d.phenylephrine IS NOT NULL
+          OR d.vasopressin IS NOT NULL
+          OR d.dobutamine IS NOT NULL
+          OR d.milrinone IS NOT NULL
+      )
+)
+SELECT
+    c.subject_id,
+    c.hadm_id,
+    c.stay_id,
+    c.age,
+    c.sex AS gender,
+    c.race,
+    c.insurance,
+    c.marital_status,
+    round(fd_height.height::numeric, 3) AS height_cm,
+    round(fd_weight.weight::numeric, 3) AS weight_kg,
+    CASE
+        WHEN fd_height.height > 0 AND fd_weight.weight > 0
+        THEN round((fd_weight.weight / power(fd_height.height / 100.0, 2))::numeric, 6)
+        ELSE NULL
+    END AS bmi,
+    round(vs.sbp_mean::numeric, 6) AS sbp,
+    round(vs.dbp_mean::numeric, 6) AS dbp,
+    round(vs.resp_rate_mean::numeric, 6) AS resp_rate,
+    round(vs.heart_rate_mean::numeric, 6) AS heart_rate,
+    round(vs.temperature_mean::numeric, 6) AS temperature,
+    round(vs.spo2_mean::numeric, 6) AS spo2,
+    round(cbc.wbc::numeric, 6) AS white_blood_cell_count,
+    round(cbc.rbc::numeric, 6) AS red_blood_cell_count,
+    round(c.neutrophil_count::numeric, 6) AS neutrophil_count,
+    round(c.lymphocyte_count::numeric, 6) AS lymphocyte_count,
+    round(c.nlr::numeric, 6) AS nlr,
+    CASE
+        WHEN c.nlr <= {q1_max} THEN 'Q1'
+        WHEN c.nlr <= {q2_max} THEN 'Q2'
+        WHEN c.nlr <= {q3_max} THEN 'Q3'
+        ELSE 'Q4'
+    END AS nlr_quartile,
+    round(cbc.platelet::numeric, 6) AS platelet_count,
+    round(cbc.hemoglobin::numeric, 6) AS hemoglobin,
+    round(enzyme.alt::numeric, 6) AS alanine_aminotransferase,
+    round(coag.inr::numeric, 6) AS international_normalized_ratio,
+    round(chem.creatinine::numeric, 6) AS creatinine,
+    round(chem.bun::numeric, 6) AS urea_nitrogen,
+    round(bg.lactate::numeric, 6) AS lactate,
+    round(bg.ph::numeric, 6) AS blood_ph,
+    round(COALESCE(chem.glucose, vs.glucose_mean)::numeric, 6) AS blood_glucose,
+    round(chem.sodium::numeric, 6) AS sodium,
+    round(COALESCE(bg.potassium, chem.potassium)::numeric, 6) AS potassium,
+    round(COALESCE(bg.calcium, chem.calcium)::numeric, 6) AS calcium,
+    COALESCE(charlson_flags.congestive_heart_failure, 0) AS chf,
+    COALESCE(charlson_flags.cerebrovascular_disease, 0) AS cvd,
+    COALESCE(charlson_flags.chronic_pulmonary_disease, 0) AS copd,
+    COALESCE(charlson_flags.myocardial_infarct, 0) AS mi,
+    CASE
+        WHEN COALESCE(charlson_flags.mild_liver_disease, 0) = 1
+          OR COALESCE(charlson_flags.severe_liver_disease, 0) = 1
+        THEN 1 ELSE 0
+    END AS liver_disease,
+    COALESCE(charlson_flags.renal_disease, 0) AS renal_disease,
+    CASE
+        WHEN COALESCE(charlson_flags.diabetes_without_cc, 0) = 1
+          OR COALESCE(charlson_flags.diabetes_with_cc, 0) = 1
+        THEN 1 ELSE 0
+    END AS diabetes,
+    round(fd_sofa.sofa::numeric, 6) AS sofa_score,
+    round(saps.sapsii::numeric, 6) AS saps_ii_score,
+    CASE WHEN ventilation_flag.mechanical_ventilation IS NULL THEN 0 ELSE 1 END AS mechanical_ventilation,
+    CASE WHEN rrt_flag.renal_replacement_therapy IS NULL THEN 0 ELSE 1 END AS renal_replacement_therapy,
+    CASE WHEN vasopressor_flag.vasopressor_use IS NULL THEN 0 ELSE 1 END AS vasopressor_use,
+    c.sepsis3_flag,
+    c.suspected_infection_time,
+    c.sofa_time,
+    c.nlr_charttime,
+    c.mortality_28d,
+    round(c.time_to_event_28d_hours::numeric, 6) AS time_to_event_28d_hours,
+    round(c.time_to_event_28d_days::numeric, 6) AS time_to_event_28d_days,
+    round((c.icu_los_hours / 24.0)::numeric, 6) AS icu_los_days,
+    round((c.hospital_los_hours / 24.0)::numeric, 6) AS hospital_los_days
+FROM cohort_ctx c
+LEFT JOIN mimiciv_derived.first_day_height fd_height
+    ON fd_height.stay_id = c.stay_id
+LEFT JOIN mimiciv_derived.first_day_weight fd_weight
+    ON fd_weight.stay_id = c.stay_id
+LEFT JOIN mimiciv_derived.first_day_vitalsign vs
+    ON vs.stay_id = c.stay_id
+LEFT JOIN mimiciv_derived.first_day_sofa fd_sofa
+    ON fd_sofa.stay_id = c.stay_id
+LEFT JOIN mimiciv_derived.sapsii saps
+    ON saps.stay_id = c.stay_id
+LEFT JOIN cbc
+    ON cbc.hadm_id = c.hadm_id
+LEFT JOIN chem
+    ON chem.hadm_id = c.hadm_id
+LEFT JOIN bg
+    ON bg.hadm_id = c.hadm_id
+LEFT JOIN coag
+    ON coag.hadm_id = c.hadm_id
+LEFT JOIN enzyme
+    ON enzyme.hadm_id = c.hadm_id
+LEFT JOIN charlson_flags
+    ON charlson_flags.hadm_id = c.hadm_id
+LEFT JOIN rrt_flag
+    ON rrt_flag.stay_id = c.stay_id
+LEFT JOIN ventilation_flag
+    ON ventilation_flag.stay_id = c.stay_id
+LEFT JOIN vasopressor_flag
+    ON vasopressor_flag.stay_id = c.stay_id
 ORDER BY c.stay_id
 """
 

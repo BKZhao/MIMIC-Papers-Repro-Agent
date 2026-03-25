@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import os
 from pathlib import Path
 from typing import Any
 
@@ -33,7 +34,7 @@ class QualityGates:
 class LLMConfig:
     provider: str = "siliconflow"
     base_url: str = "https://api.siliconflow.cn/v1"
-    default_model: str = "deepseek-ai/DeepSeek-V3"
+    default_model: str = "Qwen/Qwen2.5-72B-Instruct"
     api_key_env: str = "SILICONFLOW_API_KEY"
     temperature: float = 0.0
     max_tokens: int = 4000
@@ -110,6 +111,58 @@ def _as_list_of_str(raw: Any) -> list[str]:
     return [text] if text else []
 
 
+def _env_str(name: str, default: str) -> str:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    stripped = value.strip()
+    return stripped if stripped else default
+
+
+def _env_int(name: str, default: int) -> int:
+    value = os.getenv(name)
+    if value is None or not value.strip():
+        return default
+    try:
+        return int(value.strip())
+    except ValueError:
+        return default
+
+
+def _env_float(name: str, default: float) -> float:
+    value = os.getenv(name)
+    if value is None or not value.strip():
+        return default
+    try:
+        return float(value.strip())
+    except ValueError:
+        return default
+
+
+def _env_bool(name: str, default: bool) -> bool:
+    value = os.getenv(name)
+    if value is None or not value.strip():
+        return default
+    normalized = value.strip().lower()
+    if normalized in {"1", "true", "yes", "on"}:
+        return True
+    if normalized in {"0", "false", "no", "off"}:
+        return False
+    return default
+
+
+def _resolve_llm_api_key_env(configured_env_name: str) -> str:
+    explicit_override = os.getenv("LLM_API_KEY_ENV", "").strip()
+    if explicit_override:
+        return explicit_override
+    configured_env_name = configured_env_name.strip() or "SILICONFLOW_API_KEY"
+    if os.getenv(configured_env_name, "").strip():
+        return configured_env_name
+    if os.getenv("OPENAI_API_KEY", "").strip():
+        return "OPENAI_API_KEY"
+    return configured_env_name
+
+
 def _parse_execution_mode(raw: Any) -> ExecutionMode:
     try:
         return ExecutionMode(str(raw or ExecutionMode.DETERMINISTIC.value))
@@ -152,14 +205,14 @@ def load_pipeline_config(path: Path) -> PipelineConfig:
         max_fail_metrics=int(gates_raw.get("max_fail_metrics", 0)),
     )
     llm = LLMConfig(
-        provider=str(llm_raw.get("provider", "siliconflow")),
-        base_url=str(llm_raw.get("base_url", "https://api.siliconflow.cn/v1")),
-        default_model=str(llm_raw.get("default_model", "deepseek-ai/DeepSeek-V3")),
-        api_key_env=str(llm_raw.get("api_key_env", "SILICONFLOW_API_KEY")),
-        temperature=float(llm_raw.get("temperature", 0.0)),
-        max_tokens=int(llm_raw.get("max_tokens", 4000)),
-        timeout_seconds=int(llm_raw.get("timeout_seconds", 60)),
-        enabled=bool(llm_raw.get("enabled", True)),
+        provider=_env_str("LLM_PROVIDER", str(llm_raw.get("provider", "siliconflow"))),
+        base_url=_env_str("LLM_BASE_URL", str(llm_raw.get("base_url", "https://api.siliconflow.cn/v1"))),
+        default_model=_env_str("LLM_DEFAULT_MODEL", str(llm_raw.get("default_model", "Qwen/Qwen2.5-72B-Instruct"))),
+        api_key_env=_resolve_llm_api_key_env(str(llm_raw.get("api_key_env", "SILICONFLOW_API_KEY"))),
+        temperature=_env_float("LLM_TEMPERATURE", float(llm_raw.get("temperature", 0.0))),
+        max_tokens=_env_int("LLM_MAX_TOKENS", int(llm_raw.get("max_tokens", 4000))),
+        timeout_seconds=_env_int("LLM_TIMEOUT_SECONDS", int(llm_raw.get("timeout_seconds", 60))),
+        enabled=_env_bool("LLM_ENABLED", bool(llm_raw.get("enabled", True))),
     )
 
     targets = raw.get("targets", [])

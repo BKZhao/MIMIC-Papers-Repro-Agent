@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from .contracts import TaskContract, VariableRole
+from .preset_registry import get_paper_preset
 
 
 @dataclass(frozen=True)
@@ -98,11 +99,14 @@ class MimicIVAdapter(DatasetAdapter):
         missing: list[str] = []
         execution_supported = False
         execution_backend = "spec_only"
+        preset = get_paper_preset(contract.meta.get("preset"))
 
-        if contract.meta.get("preset") == "mimic_tyg_sepsis":
+        if preset is not None:
             execution_supported = True
-            execution_backend = "deterministic_bridge"
-            notes.append("This contract matches the built-in TyG sepsis preset and can run through the deterministic bridge.")
+            execution_backend = preset.execution_backend
+            notes.append(
+                f"This contract matches the built-in preset '{preset.title}' and can run through the deterministic bridge."
+            )
         else:
             missing.extend(
                 [
@@ -112,6 +116,12 @@ class MimicIVAdapter(DatasetAdapter):
                 ]
             )
             notes.append("Non-preset MIMIC studies can already be planned and persisted, but full execution still needs the generic SQL/feature compiler.")
+        study_template = str(contract.meta.get("study_template_title") or contract.meta.get("study_template") or "").strip()
+        if study_template:
+            notes.append(f"Inferred study template: {study_template}.")
+        mapped_count = int(contract.meta.get("semantic_mapped_variable_count", 0) or 0)
+        if mapped_count > 0:
+            notes.append(f"Semantic registry matched {mapped_count} variables in the current contract.")
 
         return AdapterSupport(
             adapter_name=self.name,
@@ -130,6 +140,11 @@ class MimicIVAdapter(DatasetAdapter):
             "first_stay_logic": "subject-level or stay-level first ICU stay depending on contract",
             "derived_schema_candidates": ["mimiciv_derived"],
         }
+        payload["preset"] = {
+            "key": contract.meta.get("preset", ""),
+            "title": contract.meta.get("preset_title", ""),
+            "execution_backend": contract.meta.get("execution_backend", "spec_only"),
+        }
         return payload
 
     def compile_feature_blueprint(self, contract: TaskContract) -> dict[str, Any]:
@@ -139,6 +154,15 @@ class MimicIVAdapter(DatasetAdapter):
             "Otherwise resolve through local variable mapping rules for MIMIC-IV.",
             "Derived variables should preserve source_name and formula when available.",
         ]
+        payload["semantic_mapping_summary"] = {
+            "mapped_variable_count": len([item for item in contract.variables if item.dataset_field]),
+            "unmapped_variables": [
+                item.name
+                for item in contract.variables
+                if not item.dataset_field and item.role != VariableRole.ID
+            ],
+            "registry": dict(contract.meta.get("semantic_registry", {})),
+        }
         return payload
 
     def compile_model_blueprint(self, contract: TaskContract) -> dict[str, Any]:
@@ -153,6 +177,12 @@ class MimicIVAdapter(DatasetAdapter):
             "subgroup_analysis",
             "interaction_analysis",
         ]
+        payload["study_template"] = {
+            "key": contract.meta.get("study_template", ""),
+            "title": contract.meta.get("study_template_title", ""),
+            "suggested_outputs": list(contract.meta.get("study_template_suggested_outputs", [])),
+        }
+        payload["execution_backend"] = contract.meta.get("execution_backend", "spec_only")
         return payload
 
 

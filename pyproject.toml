@@ -10,6 +10,8 @@ readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
   "PyYAML>=6.0",
+  "PyMuPDF>=1.24.0",
+  "pdfplumber>=0.11.0",
 ]
 
 [project.scripts]
@@ -20,4 +22,3 @@ package-dir = {"" = "src"}
 
 [tool.setuptools.packages.find]
 where = ["src"]
-
