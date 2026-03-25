@@ -1,6 +1,12 @@
-# paper-repro-agent
+<p align="center">
+  <img src="docs/assets/readme-hero.svg" alt="MIMIC Clinical Paper Reproduction Agent banner" width="100%">
+</p>
 
-Agent framework for automated reproduction of MIMIC clinical observational papers.
+<h1 align="center">MIMIC Clinical Paper Reproduction Agent</h1>
+
+<p align="center">
+  <strong>OpenClaw / Lobster-ready framework for reading a clinical paper, building a TaskContract, running MIMIC SQL and statistics, and exporting paper-like artifacts.</strong>
+</p>
 
 <p align="center">
   <img src="https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white" alt="Python 3.10+">
@@ -11,7 +17,10 @@ Agent framework for automated reproduction of MIMIC clinical observational paper
 </p>
 
 <p align="center">
-  <strong>Read a paper -> build a TaskContract -> connect to MIMIC -> reproduce tables and figures -> verify against the paper.</strong>
+  <a href="#-automation-workflow"><strong>Workflow</strong></a> ·
+  <a href="#-execution-modes"><strong>Execution Modes</strong></a> ·
+  <a href="#-quick-start"><strong>Quick Start</strong></a> ·
+  <a href="#-openclaw-and-lobster"><strong>OpenClaw</strong></a>
 </p>
 
 > [!IMPORTANT]
@@ -51,6 +60,12 @@ The current goal is practical and narrow:
 - OpenClaw / Lobster integration through one external agent
 
 The right description today is `clinical paper reproduction engine v1`, not a general-purpose paper auto-reproduction platform.
+
+## 🖼️ Framework Snapshot
+
+<p align="center">
+  <img src="docs/assets/readme-framework.svg" alt="Framework overview diagram for the MIMIC clinical paper reproduction agent" width="100%">
+</p>
 
 ## ✨ What This Repository Automates
 
