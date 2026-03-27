@@ -1,11 +1,11 @@
-# paper-repro-scientist 详细报告与龙虾接入说明（2026-03-27）
+# paper-repro-scientist 详细报告与OpenClaw接入说明（2026-03-27）
 
 ## 1. 报告范围
 
 本报告覆盖两部分内容：
 
 1. 当前 `paper-repro-agent` 的 Agent 架构、能力边界与运行现状
-2. 后续接入龙虾（Lobster/OpenClaw 外部编排）时的推荐调用方式与落地步骤
+2. 后续接入OpenClaw（OpenClaw 外部编排）时的推荐调用方式与落地步骤
 
 核心定位来自：
 
@@ -62,7 +62,7 @@
 
 - 入口模块：`src/repro_agent/integrations/openclaw.py`
 - 对外职责：
-  - 暴露标准化接口给上层编排器（龙虾）
+  - 暴露标准化接口给上层编排器（OpenClaw）
   - 固定工件路径约定
   - 提供可读的系统集成描述（`describe_openclaw_integration`）
 
@@ -99,19 +99,19 @@
 - `planning_only`：只给计划与 scaffold
 - `unsupported`：直接返回不支持诊断
 
-## 6. 龙虾接入：推荐调用协议
+## 6. OpenClaw接入：推荐调用协议
 
 ### 6.1 推荐时序（官方建议）
 
-1. 龙虾发送 `paper_path` 或 `paper_content` + `instructions`
+1. OpenClaw发送 `paper_path` 或 `paper_content` + `instructions`
 2. 先调 `plan_task`
 3. 若返回 `follow_up_questions`，调 `continue_session` 补结构化答案
 4. 若 `execution_supported=true` 且字段齐全，调 `run_task`
 5. 从 `artifacts` 与 `shared/sessions/<session_id>/` 读取最终结果
 
-如果希望龙虾侧只维护一个调用动作，也可以直接调用项目新增的单入口：
+如果希望OpenClaw侧只维护一个调用动作，也可以直接调用项目新增的单入口：
 
-- `handle_lobster_request(project_root, request)`
+- `handle_openclaw_request(project_root, request)`
 - 它会按 `run_mode` 自动路由 `plan_task -> continue_session -> run_task`
 
 ### 6.2 关键输入字段
@@ -137,7 +137,7 @@
 
 ### 6.3 关键输出字段
 
-龙虾至少应消费这些字段：
+OpenClaw至少应消费这些字段：
 
 - `session_id`
 - `status`
@@ -151,7 +151,7 @@
 - `task_contract_path`
 - `artifacts`（run 后）
 
-## 7. 龙虾落地方式（两种）
+## 7. OpenClaw落地方式（两种）
 
 ### 7.1 方式 A：CLI 子进程调用（最简单）
 
@@ -177,33 +177,33 @@ PYTHONPATH=src python3 -m repro_agent.cli plan-task \
   --instructions "请按论文方法复现并返回关键对齐指标。"
 ```
 
-单入口 CLI（推荐给龙虾侧集成）：
+单入口 CLI（推荐给OpenClaw侧集成）：
 
 ```bash
-PYTHONPATH=src python3 -m repro_agent.cli lobster-request \
+PYTHONPATH=src python3 -m repro_agent.cli openclaw-request \
   --project-root /home/bingkun_zhao/projects/paper-repro-agent \
-  --request-file path/to/lobster_request.json
+  --request-file path/to/openclaw_request.json
 ```
 
 快速拿模板（避免手写 JSON）：
 
 ```bash
-PYTHONPATH=src python3 -m repro_agent.cli lobster-request --template agentic_repro
+PYTHONPATH=src python3 -m repro_agent.cli openclaw-request --template agentic_repro
 ```
 
 仓库内置了 3 份可直接改的请求示例：
 
-- `configs/lobster.request.plan-only.example.json`
-- `configs/lobster.request.agentic-repro.example.json`
-- `configs/lobster.request.follow-up.example.json`
+- `configs/openclaw.request.plan-only.example.json`
+- `configs/openclaw.request.agentic-repro.example.json`
+- `configs/openclaw.request.follow-up.example.json`
 
-示例 `lobster_request.json`：
+示例 `openclaw_request.json`：
 
 ```json
 {
   "paper_path": "papers/s12890-025-04067-0.pdf",
   "instructions": "请提取论文证据并在可执行时自动运行复现。",
-  "session_id": "session-lobster-demo",
+  "session_id": "session-openclaw-demo",
   "run_mode": "agentic_repro",
   "config_path": "configs/openclaw.agentic.yaml",
   "use_llm": true,
@@ -258,7 +258,7 @@ if payload.get("execution_supported") and not payload.get("missing_high_impact_f
     print(run["artifacts"])
 ```
 
-## 8. 龙虾接入时的运行策略
+## 8. OpenClaw接入时的运行策略
 
 ### 8.1 run profile 选择
 
@@ -269,9 +269,9 @@ if payload.get("execution_supported") and not payload.get("missing_high_impact_f
 ### 8.2 错误与阻塞处理建议
 
 1. `status=blocked` 且有 `follow_up_questions`：
-   - 龙虾应转化为结构化追问，不要让模型自由猜字段
+   - OpenClaw应转化为结构化追问，不要让模型自由猜字段
 2. 请求里若出现未知字段：
-   - 返回体会带 `request_warnings`，便于龙虾侧日志告警与字段清洗
+   - 返回体会带 `request_warnings`，便于OpenClaw侧日志告警与字段清洗
 3. 布尔字段（`use_llm`、`dry_run`）建议只传 `true/false`：
    - 非法值会直接报错，避免静默回退导致行为不一致
 4. `execution_supported=false`：
@@ -281,7 +281,7 @@ if payload.get("execution_supported") and not payload.get("missing_high_impact_f
 6. 部分成功：
    - 保留已生成工件，明确剩余阻塞点
 
-## 9. 工件消费约定（龙虾读哪些文件）
+## 9. 工件消费约定（OpenClaw读哪些文件）
 
 优先读取：
 
@@ -302,10 +302,10 @@ if payload.get("execution_supported") and not payload.get("missing_high_impact_f
 
 ## 11. 当前建议
 
-如果你下一步要正式接入龙虾，建议采用：
+如果你下一步要正式接入OpenClaw，建议采用：
 
 1. 第一阶段：先用 `Python 直接调用`（方式 B）跑通端到端
-2. 第二阶段：再封装成你龙虾侧的统一任务节点（含重试与状态机）
+2. 第二阶段：再封装成你OpenClaw侧的统一任务节点（含重试与状态机）
 3. 第三阶段：最后加上质量门控（cohort、AUC/C-index、工件完整性）作为自动判定条件
 
 这样可以在不改动当前核心框架的前提下，最快实现稳定联调。

@@ -135,7 +135,7 @@ The most reusable figure families for the current project are:
 - annotated heatmaps and correlation matrices
 
 These should remain the first-class visualization targets for OpenClaw and
-Lobster integration.
+OpenClaw integration.
 
 ## Supplemental Skill Pool
 

@@ -35,7 +35,7 @@ The current scope is intentionally narrow:
 - `PostgreSQL`
 - clinical observational studies
 - survival / regression oriented workflows
-- OpenClaw or Lobster integration through one external agent
+- OpenClaw integration through one external agent
 
 ## Framework Snapshot
 
@@ -96,7 +96,7 @@ The active code lives under [`src/repro_agent`](src/repro_agent):
 - [`src/repro_agent/db`](src/repro_agent/db)
   database connection helpers
 - [`src/repro_agent/openclaw_bridge.py`](src/repro_agent/openclaw_bridge.py)
-  the stable OpenClaw/Lobster-facing bridge
+  the stable OpenClaw/OpenClaw-facing bridge
 
 The core implementation modules now live in categorized packages:
 
@@ -141,23 +141,23 @@ Recommended sequence:
 4. if executable, call `run-task`
 5. read artifacts from `shared/`, `results/`, and `shared/sessions/<session_id>/`
 
-### 1.1 Lobster single-entrypoint path
+### 1.1 OpenClaw single-entrypoint path
 
-Use this when an external orchestrator (for example Lobster/OpenClaw) wants one API-like call.
+Use this when an external orchestrator (for example OpenClaw) wants one API-like call.
 
 ```bash
-paper-repro lobster-request --template agentic_repro
+paper-repro openclaw-request --template agentic_repro
 ```
 
 ```bash
-paper-repro lobster-request \
-  --request-file configs/lobster.request.agentic-repro.example.json
+paper-repro openclaw-request \
+  --request-file configs/openclaw.request.agentic-repro.example.json
 ```
 
 You can also use the other ready-made request files:
 
-- `configs/lobster.request.plan-only.example.json`
-- `configs/lobster.request.follow-up.example.json`
+- `configs/openclaw.request.plan-only.example.json`
+- `configs/openclaw.request.follow-up.example.json`
 
 ### 2. Profile-first deterministic path
 
@@ -248,11 +248,11 @@ paper-repro describe-openclaw
 paper-repro describe-skills
 ```
 
-6. Optional: run a Lobster single-entrypoint smoke test:
+6. Optional: run a OpenClaw single-entrypoint smoke test:
 
 ```bash
-paper-repro lobster-request --template plan_only
-paper-repro lobster-request --request-file configs/lobster.request.plan-only.example.json
+paper-repro openclaw-request --template plan_only
+paper-repro openclaw-request --request-file configs/openclaw.request.plan-only.example.json
 ```
 
 ## OpenClaw
@@ -266,10 +266,10 @@ The repository exposes one external agent:
 
 Recommended single-entrypoint interface for external orchestrators:
 
-- `paper-repro lobster-request`
-- `configs/lobster.request.plan-only.example.json`
-- `configs/lobster.request.agentic-repro.example.json`
-- `configs/lobster.request.follow-up.example.json`
+- `paper-repro openclaw-request`
+- `configs/openclaw.request.plan-only.example.json`
+- `configs/openclaw.request.agentic-repro.example.json`
+- `configs/openclaw.request.follow-up.example.json`
 
 The official project-owned skills are:
 

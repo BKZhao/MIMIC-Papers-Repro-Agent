@@ -26,7 +26,7 @@ from repro_agent.agentic.runner import AgentRunner  # noqa: E402
 from repro_agent.config import load_pipeline_config  # noqa: E402
 from repro_agent.dataset_adapters import get_dataset_adapter  # noqa: E402
 from repro_agent.openclaw_bridge import continue_session, describe_openclaw_integration, plan_task  # noqa: E402
-from repro_agent.openclaw_bridge import get_lobster_request_template, handle_lobster_request  # noqa: E402
+from repro_agent.openclaw_bridge import get_openclaw_request_template, handle_openclaw_request  # noqa: E402
 from repro_agent.analysis.router import resolve_clinical_analysis_route  # noqa: E402
 from repro_agent.paper.builder import normalize_task_contract  # noqa: E402
 from repro_agent.paper.presets import detect_paper_preset  # noqa: E402
@@ -848,41 +848,41 @@ class OpenClawBridgeTests(unittest.TestCase):
             self.assertEqual(payload["execution_year_window"], "")
             self.assertFalse(payload["dataset_version_mismatch"])
 
-    def test_handle_lobster_request_plan_only_returns_contract_payload(self) -> None:
+    def test_handle_openclaw_request_plan_only_returns_contract_payload(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             project_root = Path(tmpdir)
             _scaffold_temp_project(project_root)
-            payload = handle_lobster_request(
+            payload = handle_openclaw_request(
                 project_root=project_root,
                 request={
                     "paper_path": "papers/paper.md",
                     "instructions": "Please plan the reproduction from this paper.",
-                    "session_id": "session-lobster-plan",
+                    "session_id": "session-openclaw-plan",
                     "use_llm": False,
                     "run_mode": "plan_only",
                     "config_path": "configs/agentic.example.yaml",
                 },
             )
 
-            self.assertEqual(payload["session_id"], "session-lobster-plan")
+            self.assertEqual(payload["session_id"], "session-openclaw-plan")
             self.assertEqual(payload["run_profile_used"], "plan_only")
             self.assertEqual(payload["agent_decision"]["mode"], "deterministic_preset_run")
             self.assertTrue(payload["execution_supported"])
             self.assertNotIn("execution", payload)
             self.assertTrue(
-                (project_root / "shared" / "sessions" / "session-lobster-plan" / "task_contract.json").exists()
+                (project_root / "shared" / "sessions" / "session-openclaw-plan" / "task_contract.json").exists()
             )
 
-    def test_handle_lobster_request_agentic_repro_auto_runs_when_ready(self) -> None:
+    def test_handle_openclaw_request_agentic_repro_auto_runs_when_ready(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             project_root = Path(tmpdir)
             _scaffold_temp_project(project_root)
-            payload = handle_lobster_request(
+            payload = handle_openclaw_request(
                 project_root=project_root,
                 request={
                     "paper_path": "papers/paper.md",
                     "instructions": "Please execute this supported preset route.",
-                    "session_id": "session-lobster-run",
+                    "session_id": "session-openclaw-run",
                     "use_llm": False,
                     "run_mode": "agentic_repro",
                     "dry_run": True,
@@ -890,17 +890,17 @@ class OpenClawBridgeTests(unittest.TestCase):
                 },
             )
 
-            self.assertEqual(payload["session_id"], "session-lobster-run")
+            self.assertEqual(payload["session_id"], "session-openclaw-run")
             self.assertEqual(payload["run_profile_used"], "agentic_repro")
             self.assertIn("execution", payload)
             self.assertIn(payload["execution"]["status"], {"success", "blocked"})
             self.assertEqual(payload["status"], payload["execution"]["status"])
             self.assertIn("artifacts", payload)
             self.assertTrue(
-                (project_root / "shared" / "sessions" / "session-lobster-run" / "session_state.json").exists()
+                (project_root / "shared" / "sessions" / "session-openclaw-run" / "session_state.json").exists()
             )
 
-    def test_handle_lobster_request_continue_only_updates_existing_session(self) -> None:
+    def test_handle_openclaw_request_continue_only_updates_existing_session(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             project_root = Path(tmpdir)
             _scaffold_temp_project(project_root)
@@ -913,15 +913,15 @@ class OpenClawBridgeTests(unittest.TestCase):
                 config_path=project_root / "configs" / "agentic.example.yaml",
                 paper_path="papers/minimal.md",
                 instructions="Prepare a plan.",
-                session_id="session-lobster-follow-up",
+                session_id="session-openclaw-follow-up",
                 use_llm=False,
             )
             self.assertEqual(initial["agent_decision"]["mode"], "needs_contract_completion")
 
-            updated = handle_lobster_request(
+            updated = handle_openclaw_request(
                 project_root=project_root,
                 request={
-                    "session_id": "session-lobster-follow-up",
+                    "session_id": "session-openclaw-follow-up",
                     "run_mode": "plan_only",
                     "config_path": "configs/agentic.example.yaml",
                     "answers": {
@@ -940,16 +940,16 @@ class OpenClawBridgeTests(unittest.TestCase):
             self.assertEqual(updated["recommended_run_profile"], "preset_real_run")
             self.assertNotIn("execution", updated)
 
-    def test_handle_lobster_request_surfaces_unknown_field_warnings(self) -> None:
+    def test_handle_openclaw_request_surfaces_unknown_field_warnings(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             project_root = Path(tmpdir)
             _scaffold_temp_project(project_root)
-            payload = handle_lobster_request(
+            payload = handle_openclaw_request(
                 project_root=project_root,
                 request={
                     "paper_path": "papers/paper.md",
                     "instructions": "Please plan this paper.",
-                    "session_id": "session-lobster-warning",
+                    "session_id": "session-openclaw-warning",
                     "run_mode": "plan_only",
                     "config_path": "configs/agentic.example.yaml",
                     "use_llm": False,
@@ -961,32 +961,32 @@ class OpenClawBridgeTests(unittest.TestCase):
             self.assertIn("request_warnings", payload)
             self.assertIn("unexpected_field", " ".join(payload["request_warnings"]))
 
-    def test_handle_lobster_request_rejects_invalid_boolean_values(self) -> None:
+    def test_handle_openclaw_request_rejects_invalid_boolean_values(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             project_root = Path(tmpdir)
             _scaffold_temp_project(project_root)
             with self.assertRaisesRegex(ValueError, "use_llm"):
-                handle_lobster_request(
+                handle_openclaw_request(
                     project_root=project_root,
                     request={
                         "paper_path": "papers/paper.md",
                         "instructions": "Please plan this paper.",
-                        "session_id": "session-lobster-bool",
+                        "session_id": "session-openclaw-bool",
                         "run_mode": "plan_only",
                         "config_path": "configs/agentic.example.yaml",
                         "use_llm": "maybe",
                     },
                 )
 
-    def test_get_lobster_request_template_returns_expected_defaults(self) -> None:
-        template = get_lobster_request_template("agentic_repro")
+    def test_get_openclaw_request_template_returns_expected_defaults(self) -> None:
+        template = get_openclaw_request_template("agentic_repro")
         self.assertEqual(template["run_mode"], "agentic_repro")
         self.assertEqual(template["config_path"], "configs/openclaw.agentic.yaml")
         self.assertIn("instructions", template)
 
-    def test_get_lobster_request_template_rejects_unknown_mode(self) -> None:
+    def test_get_openclaw_request_template_rejects_unknown_mode(self) -> None:
         with self.assertRaisesRegex(ValueError, "Invalid template mode"):
-            get_lobster_request_template("bad_mode")
+            get_openclaw_request_template("bad_mode")
 
     def test_plan_task_surfaces_dataset_version_mismatch_for_trajectory_paper(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:

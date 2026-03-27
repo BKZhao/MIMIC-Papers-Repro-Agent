@@ -71,7 +71,7 @@ The primary exchange object is always `TaskContract`, not free-form prompts.
 - `shared/sessions/<session_id>/`
   session-scoped plans, replies, manifests, and artifact indexes
 
-Preferred Lobster reads:
+Preferred OpenClaw reads:
 
 - `shared/sessions/<session_id>/task_contract.json`
 - `shared/sessions/<session_id>/session_state.json`

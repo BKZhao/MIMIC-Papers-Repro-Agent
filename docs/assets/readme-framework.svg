@@ -35,7 +35,7 @@
     <text x="858" y="272" text-anchor="middle" fill="#7c3aed" font-size="16" font-family="Segoe UI, Arial, sans-serif">planning or execution</text>
 
     <rect x="1060" y="170" width="272" height="132" rx="24" fill="#fef3c7" stroke="#f59e0b"/>
-    <text x="1196" y="214" text-anchor="middle" fill="#92400e" font-size="22" font-family="Segoe UI, Arial, sans-serif" font-weight="800">OpenClaw / Lobster</text>
+    <text x="1196" y="214" text-anchor="middle" fill="#92400e" font-size="22" font-family="Segoe UI, Arial, sans-serif" font-weight="800">OpenClaw</text>
     <text x="1196" y="246" text-anchor="middle" fill="#b45309" font-size="16" font-family="Segoe UI, Arial, sans-serif">single external agent</text>
     <text x="1196" y="272" text-anchor="middle" fill="#b45309" font-size="16" font-family="Segoe UI, Arial, sans-serif">paper-repro-scientist</text>
   </g>

@@ -1,7 +1,7 @@
 {
   "paper_path": "papers/s12890-025-04067-0.pdf",
   "instructions": "Read the paper, extract evidence, and produce a TaskContract only.",
-  "session_id": "session-lobster-plan-demo",
+  "session_id": "session-openclaw-plan-demo",
   "run_mode": "plan_only",
   "config_path": "configs/openclaw.agentic.yaml",
   "use_llm": true

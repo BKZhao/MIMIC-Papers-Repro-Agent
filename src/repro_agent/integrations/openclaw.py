@@ -65,7 +65,7 @@ OPENCLAW_RUN_PROFILES: dict[str, dict[str, Any]] = {
     },
 }
 
-LOBSTER_REQUEST_ALLOWED_FIELDS: set[str] = {
+OPENCLAW_REQUEST_ALLOWED_FIELDS: set[str] = {
     "paper_path",
     "paper_content",
     "instructions",
@@ -77,11 +77,11 @@ LOBSTER_REQUEST_ALLOWED_FIELDS: set[str] = {
     "dry_run",
 }
 
-LOBSTER_REQUEST_TEMPLATES: dict[str, dict[str, Any]] = {
+OPENCLAW_REQUEST_TEMPLATES: dict[str, dict[str, Any]] = {
     "plan_only": {
         "paper_path": "papers/s12890-025-04067-0.pdf",
         "instructions": "Read the paper, extract evidence, and produce a TaskContract only.",
-        "session_id": "session-lobster-plan-demo",
+        "session_id": "session-openclaw-plan-demo",
         "run_mode": "plan_only",
         "config_path": "configs/openclaw.agentic.yaml",
         "use_llm": True,
@@ -89,14 +89,14 @@ LOBSTER_REQUEST_TEMPLATES: dict[str, dict[str, Any]] = {
     "agentic_repro": {
         "paper_path": "papers/s12890-025-04067-0.pdf",
         "instructions": "Read the paper, build TaskContract, and auto-run when execution becomes ready.",
-        "session_id": "session-lobster-agentic-demo",
+        "session_id": "session-openclaw-agentic-demo",
         "run_mode": "agentic_repro",
         "config_path": "configs/openclaw.agentic.yaml",
         "use_llm": True,
         "dry_run": False,
     },
     "follow_up": {
-        "session_id": "session-lobster-agentic-demo",
+        "session_id": "session-openclaw-agentic-demo",
         "answers": {
             "exposure_variables": "TyG index",
             "outcome_variables": "28-day mortality",
@@ -113,7 +113,7 @@ LOBSTER_REQUEST_TEMPLATES: dict[str, dict[str, Any]] = {
 OPENCLAW_AGENT_CONTRACT: dict[str, Any] = {
     "agent_name": OPENCLAW_AGENT_NAME,
     "single_entrypoint": True,
-    "external_role": "Lobster-facing clinical paper reproduction scientist",
+    "external_role": "OpenClaw-facing clinical paper reproduction scientist",
     "architecture_posture": "hybrid_llm_plus_deterministic",
     "accepted_request_fields": [
         "paper_path | paper_content",
@@ -303,7 +303,7 @@ def describe_openclaw_integration(project_root: Path) -> dict[str, Any]:
                 "outputs": ["analysis_dataset.csv", "analysis_missingness.json"],
             },
             {
-                "name": "handle_lobster_request",
+                "name": "handle_openclaw_request",
                 "description": (
                     "Single-entrypoint adapter for external orchestrators. Accepts one request object and routes it "
                     "through plan/continue/run based on run_mode and current readiness."
@@ -371,9 +371,9 @@ def describe_openclaw_integration(project_root: Path) -> dict[str, Any]:
             family.key: family.as_dict()
             for family in list_core_clinical_analysis_families()
         },
-        "lobster_request_templates": {
-            name: get_lobster_request_template(name)
-            for name in sorted(LOBSTER_REQUEST_TEMPLATES)
+        "openclaw_request_templates": {
+            name: get_openclaw_request_template(name)
+            for name in sorted(OPENCLAW_REQUEST_TEMPLATES)
         },
         "run_profiles": dict(OPENCLAW_RUN_PROFILES),
         "supported_presets": [preset.as_dict() for preset in list_builtin_presets()],
@@ -394,17 +394,17 @@ def describe_openclaw_integration(project_root: Path) -> dict[str, Any]:
             "results": "results/",
             "sessions": "shared/sessions/<session_id>/",
         },
-        "lobster_handoff": {
+        "openclaw_handoff": {
             "call_pattern": [
-                "Lobster sends paper_path or paper_content plus instructions.",
+                "OpenClaw sends paper_path or paper_content plus instructions.",
                 "Call plan_task first.",
                 "If follow_up_questions are returned, call continue_session with structured answers.",
                 "If execution_supported is true and required fields are complete, call run_task.",
                 "Read final figures, tables, and report from returned artifacts.",
             ],
             "do_not_do": [
-                "Do not let Lobster infer cohort SQL itself.",
-                "Do not let Lobster invent a second task schema outside TaskContract.",
+                "Do not let OpenClaw infer cohort SQL itself.",
+                "Do not let OpenClaw invent a second task schema outside TaskContract.",
                 "Do not claim unsupported papers are fully reproduced.",
             ],
         },
@@ -577,13 +577,13 @@ def run_task(
     }
 
 
-def handle_lobster_request(
+def handle_openclaw_request(
     *,
     project_root: Path,
     request: dict[str, Any],
 ) -> dict[str, Any]:
     """
-    Single-entrypoint adapter for external orchestrators such as Lobster/OpenClaw.
+    Single-entrypoint adapter for external orchestrators such as OpenClaw.
 
     Behavior:
     1) Plan when paper input is provided.
@@ -592,9 +592,9 @@ def handle_lobster_request(
     """
     payload = request or {}
     if not isinstance(payload, dict):
-        raise ValueError("Lobster request must be a JSON object")
+        raise ValueError("OpenClaw request must be a JSON object")
 
-    unknown_fields = sorted(set(payload) - LOBSTER_REQUEST_ALLOWED_FIELDS)
+    unknown_fields = sorted(set(payload) - OPENCLAW_REQUEST_ALLOWED_FIELDS)
     request_warnings = []
     if unknown_fields:
         request_warnings.append(
@@ -613,7 +613,7 @@ def handle_lobster_request(
     project_root = project_root.resolve()
     _load_project_env(project_root)
 
-    config_path = _resolve_lobster_config_path(project_root=project_root, request=payload, run_mode=run_mode)
+    config_path = _resolve_openclaw_request_config_path(project_root=project_root, request=payload, run_mode=run_mode)
     session_id = str(payload.get("session_id", "")).strip()
     paper_path = str(payload.get("paper_path", "")).strip()
     paper_content = str(payload.get("paper_content", "")).strip()
@@ -695,16 +695,16 @@ def handle_lobster_request(
     return _with_request_warnings(response, request_warnings)
 
 
-def get_lobster_request_template(mode: str = "agentic_repro") -> dict[str, Any]:
+def get_openclaw_request_template(mode: str = "agentic_repro") -> dict[str, Any]:
     normalized = str(mode).strip().lower() or "agentic_repro"
-    if normalized not in LOBSTER_REQUEST_TEMPLATES:
+    if normalized not in OPENCLAW_REQUEST_TEMPLATES:
         raise ValueError(
             "Invalid template mode: "
             + normalized
             + ". Expected one of: "
-            + ", ".join(sorted(LOBSTER_REQUEST_TEMPLATES))
+            + ", ".join(sorted(OPENCLAW_REQUEST_TEMPLATES))
         )
-    return copy.deepcopy(LOBSTER_REQUEST_TEMPLATES[normalized])
+    return copy.deepcopy(OPENCLAW_REQUEST_TEMPLATES[normalized])
 
 
 def export_contract(
@@ -774,7 +774,7 @@ def extract_analysis_dataset(
     }
 
 
-def _resolve_lobster_config_path(*, project_root: Path, request: dict[str, Any], run_mode: str) -> Path:
+def _resolve_openclaw_request_config_path(*, project_root: Path, request: dict[str, Any], run_mode: str) -> Path:
     requested = str(request.get("config_path", "")).strip()
     if requested:
         path = Path(requested)

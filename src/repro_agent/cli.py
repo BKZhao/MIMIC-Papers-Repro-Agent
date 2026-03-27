@@ -16,8 +16,8 @@ from .llm import LLMError, OpenAICompatibleClient
 from .openclaw_bridge import (
     continue_session as bridge_continue_session,
     describe_openclaw_integration,
-    get_lobster_request_template as bridge_get_lobster_request_template,
-    handle_lobster_request as bridge_handle_lobster_request,
+    get_openclaw_request_template as bridge_get_openclaw_request_template,
+    handle_openclaw_request as bridge_handle_openclaw_request,
     run_preset_pipeline as bridge_run_preset_pipeline,
 )
 from .pipeline import PaperReproPipeline
@@ -441,7 +441,7 @@ def cmd_continue_session(args: argparse.Namespace) -> int:
     return 0
 
 
-def cmd_lobster_request(args: argparse.Namespace) -> int:
+def cmd_openclaw_request(args: argparse.Namespace) -> int:
     project_root = _resolve_project_root(getattr(args, "project_root", None))
     _load_project_env(project_root)
 
@@ -449,7 +449,7 @@ def cmd_lobster_request(args: argparse.Namespace) -> int:
         raise SystemExit("--template cannot be used together with --request-file or --request-json")
 
     if args.template:
-        payload = bridge_get_lobster_request_template(str(args.template))
+        payload = bridge_get_openclaw_request_template(str(args.template))
         print(json.dumps(payload, indent=2, ensure_ascii=False))
         return 0
 
@@ -467,9 +467,9 @@ def cmd_lobster_request(args: argparse.Namespace) -> int:
         request_payload = json.loads(args.request_json)
 
     if not isinstance(request_payload, dict):
-        raise SystemExit("Lobster request payload must be a JSON object")
+        raise SystemExit("OpenClaw request payload must be a JSON object")
 
-    payload = bridge_handle_lobster_request(
+    payload = bridge_handle_openclaw_request(
         project_root=project_root,
         request=request_payload,
     )
@@ -596,20 +596,20 @@ def build_parser() -> argparse.ArgumentParser:
     continue_session.add_argument("--real-run", action="store_true")
     continue_session.set_defaults(func=cmd_continue_session)
 
-    lobster = sub.add_parser(
-        "lobster-request",
-        help="Handle a single Lobster/OpenClaw request object and auto-route plan/continue/run",
+    openclaw = sub.add_parser(
+        "openclaw-request",
+        help="Handle a single OpenClaw request object and auto-route plan/continue/run",
     )
-    lobster.add_argument("--project-root", type=str, default=".")
-    lobster.add_argument(
+    openclaw.add_argument("--project-root", type=str, default=".")
+    openclaw.add_argument(
         "--template",
         choices=["plan_only", "agentic_repro", "follow_up"],
         default="",
         help="Print a request JSON template and exit",
     )
-    lobster.add_argument("--request-file", type=str, default="")
-    lobster.add_argument("--request-json", type=str, default="")
-    lobster.set_defaults(func=cmd_lobster_request)
+    openclaw.add_argument("--request-file", type=str, default="")
+    openclaw.add_argument("--request-json", type=str, default="")
+    openclaw.set_defaults(func=cmd_openclaw_request)
 
     run_task = sub.add_parser("run-task", help="Execute a planned task contract through the multi-subagent runner")
     run_task.add_argument("--project-root", type=str, default=".")
