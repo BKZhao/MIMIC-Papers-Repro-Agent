@@ -16,16 +16,22 @@ SRC_DIR = Path(__file__).resolve().parents[2] / "src"
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
-from repro_agent.cohort_sql import (  # noqa: E402
+from repro_agent.sql.cohort import (  # noqa: E402
+    PAPER_MIMIC_HEART_RATE_TRAJECTORY_PROFILE,
     PAPER_MIMIC_NLR_PROFILE,
+    PAPER_MIMIC_TYG_STROKE_PROFILE,
     PAPER_MIMIC_TYG_PROFILE,
     TygSepsisCohortProfile,
+    build_hr_trajectory_sepsis_cohort_sql,
+    build_hr_trajectory_sepsis_funnel_sql,
     build_nlr_sepsis_cohort_sql,
     build_nlr_sepsis_funnel_sql,
+    build_tyg_stroke_cohort_sql,
+    build_tyg_stroke_funnel_sql,
     build_tyg_sepsis_cohort_sql,
     build_tyg_sepsis_funnel_sql,
 )
-from repro_agent.paper_profiles import get_paper_execution_profile  # noqa: E402
+from repro_agent.paper.profiles import get_paper_execution_profile  # noqa: E402
 
 
 def load_env_file(project_root: Path) -> None:
@@ -136,11 +142,20 @@ def parse_counts(output: str) -> dict[str, int]:
     return result
 
 
-def build_alignment_payload(profile_key: str, rows: list[dict[str, str]]) -> dict[str, object]:
+def build_alignment_payload(
+    profile_key: str,
+    rows: list[dict[str, str]],
+    *,
+    execution_environment_dataset_version: str = "",
+    execution_year_window: str = "",
+) -> dict[str, object]:
     profile = get_paper_execution_profile(profile_key)
     expected_final_n = profile.expected_final_n if profile is not None else 0
     payload: dict[str, object] = {
         "profile": profile.as_dict() if profile is not None else {"key": profile_key},
+        "paper_target_dataset_version": profile.source_dataset_version if profile is not None else "",
+        "execution_environment_dataset_version": execution_environment_dataset_version,
+        "execution_year_window": execution_year_window or (profile.execution_year_window if profile is not None else ""),
         "actual": {
             "n_final": len(rows),
         },
@@ -192,6 +207,18 @@ def resolve_profile_sql(
             build_nlr_sepsis_cohort_sql(mode=mode, has_sepsis3_flag=has_sepsis3_flag, profile=cohort_profile),
             build_nlr_sepsis_funnel_sql(mode=mode, has_sepsis3_flag=has_sepsis3_flag, profile=cohort_profile),
         )
+    if profile_key == "mimic_hr_trajectory_sepsis":
+        return (
+            cohort_profile.name,
+            build_hr_trajectory_sepsis_cohort_sql(mode=mode, has_sepsis3_flag=has_sepsis3_flag, profile=cohort_profile),
+            build_hr_trajectory_sepsis_funnel_sql(mode=mode, has_sepsis3_flag=has_sepsis3_flag, profile=cohort_profile),
+        )
+    if profile_key == "mimic_tyg_stroke_nondiabetic":
+        return (
+            cohort_profile.name,
+            build_tyg_stroke_cohort_sql(mode=mode, has_sepsis3_flag=has_sepsis3_flag, profile=cohort_profile),
+            build_tyg_stroke_funnel_sql(mode=mode, has_sepsis3_flag=has_sepsis3_flag, profile=cohort_profile),
+        )
     raise SystemExit(f"Unsupported profile key: {profile_key}")
 
 
@@ -205,6 +232,8 @@ def main() -> int:
     parser.add_argument("--sepsis-source", choices=["auto", "derived", "icd"], default="auto")
     parser.add_argument("--admit-year-start", type=int, default=None)
     parser.add_argument("--admit-year-end", type=int, default=None)
+    parser.add_argument("--execution-environment-version", type=str, default="")
+    parser.add_argument("--execution-year-window", type=str, default="")
     args = parser.parse_args()
 
     project_root = Path(args.project_root).resolve()
@@ -240,6 +269,18 @@ def main() -> int:
             admit_year_start=args.admit_year_start,
             admit_year_end=args.admit_year_end,
         )
+    elif args.profile == "mimic_hr_trajectory_sepsis":
+        cohort_profile = apply_profile_overrides(
+            PAPER_MIMIC_HEART_RATE_TRAJECTORY_PROFILE,
+            admit_year_start=args.admit_year_start,
+            admit_year_end=args.admit_year_end,
+        )
+    elif args.profile == "mimic_tyg_stroke_nondiabetic":
+        cohort_profile = apply_profile_overrides(
+            PAPER_MIMIC_TYG_STROKE_PROFILE,
+            admit_year_start=args.admit_year_start,
+            admit_year_end=args.admit_year_end,
+        )
     else:
         raise SystemExit(f"Unsupported profile key: {args.profile}")
     output_rel = args.output or f"shared/{args.profile}_cohort.csv"
@@ -258,7 +299,12 @@ def main() -> int:
 
     rows = run_copy(cfg, cohort_sql, output_path)
     funnel_counts = parse_counts(run_sql(cfg, funnel_sql))
-    alignment_payload = build_alignment_payload(args.profile, rows)
+    alignment_payload = build_alignment_payload(
+        args.profile,
+        rows,
+        execution_environment_dataset_version=args.execution_environment_version,
+        execution_year_window=args.execution_year_window,
+    )
     funnel_payload = {
         "profile": profile.as_dict() if profile is not None else {"key": args.profile},
         "cohort_profile": profile_name,
@@ -271,6 +317,8 @@ def main() -> int:
             "derived_has_sepsis3_flag": has_sepsis3_flag,
             "admit_year_start": cohort_profile.admit_year_start,
             "admit_year_end": cohort_profile.admit_year_end,
+            "execution_environment_dataset_version": args.execution_environment_version,
+            "execution_year_window": args.execution_year_window or (profile.execution_year_window if profile is not None else ""),
         },
     }
 

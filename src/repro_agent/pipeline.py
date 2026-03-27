@@ -12,9 +12,9 @@ from typing import Any
 
 from .config import PipelineConfig
 from .contracts import RunSummary, StepResult, StepStatus
-from .paper_contract import build_paper_alignment_contract
+from .paper.contract import build_paper_alignment_contract
 from .runtime import LocalRuntime
-from .stats_analysis import run_stats_analysis
+from .analysis.stats import run_stats_analysis
 
 
 class PaperReproPipeline:
@@ -189,12 +189,27 @@ class PaperReproPipeline:
             tolerance_percent=self.config.quality_gates.cohort_tolerance_percent,
         )
         if not gate_ok:
+            meta = {
+                "actual": row_count,
+                "expected": expected,
+                "allowed_range": [lower, upper],
+                "quality_gate_passed": False,
+                "block_on_cohort_mismatch": self.config.quality_gates.block_on_cohort_mismatch,
+            }
+            if not self.config.quality_gates.block_on_cohort_mismatch:
+                return StepResult(
+                    step="cohort_agent",
+                    status=StepStatus.SUCCESS,
+                    message="Cohort quality gate mismatch noted; continuing with downstream analysis",
+                    outputs=[out, *extra_outputs],
+                    meta=meta,
+                )
             return StepResult(
                 step="cohort_agent",
                 status=StepStatus.BLOCKED,
                 message="Cohort quality gate failed",
                 outputs=[out, *extra_outputs],
-                meta={"actual": row_count, "expected": expected, "allowed_range": [lower, upper]},
+                meta=meta,
             )
 
         return StepResult(
@@ -202,7 +217,13 @@ class PaperReproPipeline:
             status=StepStatus.SUCCESS,
             message="Cohort artifact generated",
             outputs=[out, *extra_outputs],
-            meta={"actual": row_count, "expected": expected, "allowed_range": [lower, upper]},
+            meta={
+                "actual": row_count,
+                "expected": expected,
+                "allowed_range": [lower, upper],
+                "quality_gate_passed": True,
+                "block_on_cohort_mismatch": self.config.quality_gates.block_on_cohort_mismatch,
+            },
         )
 
     def _run_stats_agent(self, dry_run: bool) -> StepResult:
@@ -446,12 +467,14 @@ def _make_cohort_rows(n: int) -> list[dict[str, Any]]:
 
 
 def _extract_real_cohort_csv(project_root: Path, output_path: Path) -> int:
-    script_path = project_root / "scripts" / "legacy" / "build_tyg_sepsis_cohort.py"
+    script_path = project_root / "scripts" / "profiles" / "build_profile_cohort.py"
     cmd = [
         "python3",
         str(script_path),
         "--project-root",
         str(project_root),
+        "--profile",
+        "mimic_tyg_sepsis",
         "--output",
         str(output_path.relative_to(project_root)),
         "--funnel-output",
@@ -471,7 +494,7 @@ def _extract_real_cohort_csv(project_root: Path, output_path: Path) -> int:
 
 
 def _extract_real_analysis_dataset(project_root: Path) -> list[str]:
-    script_path = project_root / "scripts" / "legacy" / "build_tyg_analysis_dataset.py"
+    script_path = project_root / "scripts" / "profiles" / "build_profile_analysis_dataset.py"
     output_rel = "shared/analysis_dataset.csv"
     missingness_rel = "shared/analysis_missingness.json"
     cmd = [
@@ -479,6 +502,8 @@ def _extract_real_analysis_dataset(project_root: Path) -> list[str]:
         str(script_path),
         "--project-root",
         str(project_root),
+        "--profile",
+        "mimic_tyg_sepsis",
         "--output",
         output_rel,
         "--missingness-output",

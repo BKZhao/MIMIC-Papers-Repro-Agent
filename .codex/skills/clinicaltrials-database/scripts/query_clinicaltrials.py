@@ -193,6 +193,27 @@ def extract_study_summary(study: Dict) -> Dict:
     }
 
 
+def extract_search_metadata(results: Dict) -> Dict:
+    """
+    Extract pagination metadata from a studies search response.
+
+    The ClinicalTrials.gov API may omit totalCount for paginated responses, so
+    callers should treat it as optional and rely on studies + nextPageToken.
+
+    Args:
+        results: Search response returned by search_studies()
+
+    Returns:
+        Dictionary with page-level metadata
+    """
+    studies = results.get('studies', [])
+    return {
+        'returned_count': len(studies),
+        'total_count': results.get('totalCount'),
+        'has_next_page': bool(results.get('nextPageToken')),
+    }
+
+
 # Example usage
 if __name__ == "__main__":
     # Example 1: Search for recruiting lung cancer trials
@@ -202,8 +223,17 @@ if __name__ == "__main__":
         status="RECRUITING",
         page_size=5
     )
-    print(f"Found {results.get('totalCount', 0)} total trials")
-    print(f"Showing first {len(results.get('studies', []))} trials\n")
+    metadata = extract_search_metadata(results)
+    if metadata['total_count'] is not None:
+        print(f"API-reported total trials: {metadata['total_count']}")
+    else:
+        print("API did not report totalCount for this response.")
+    print(f"Returned {metadata['returned_count']} trials on this page")
+    print(
+        "Additional pages are available.\n"
+        if metadata['has_next_page']
+        else "No additional pages reported.\n"
+    )
 
     # Example 2: Get details for a specific trial
     if results.get('studies'):

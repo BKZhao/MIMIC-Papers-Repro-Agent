@@ -1,6 +1,6 @@
 ---
 name: pyhealth
-description: Comprehensive healthcare AI toolkit for developing, testing, and deploying machine learning models with clinical data. This skill should be used when working with electronic health records (EHR), clinical prediction tasks (mortality, readmission, drug recommendation), medical coding systems (ICD, NDC, ATC), physiological signals (EEG, ECG), healthcare datasets (MIMIC-III/IV, eICU, OMOP), or implementing deep learning models for healthcare applications (RETAIN, SafeDrug, Transformer, GNN).
+description: Comprehensive healthcare AI toolkit for developing, testing, and deploying machine learning models with clinical data. This skill should be used when working with electronic health records (EHR), clinical prediction tasks (mortality, readmission, drug recommendation), medical coding systems (ICD, NDC, ATC), physiological signals (EEG, ECG), healthcare datasets (MIMIC-III/IV, eICU, OMOP), or implementing deep learning models for healthcare applications (RETAIN, SafeDrug, Transformer, GNN). Also use for 电子病历分析, 医疗 AI, 临床预测建模, MIMIC 论文复现, 医学机器学习, and healthcare data preprocessing.
 license: MIT license
 metadata:
     skill-author: K-Dense Inc.
@@ -486,4 +486,3 @@ For detailed information on each component, refer to the comprehensive reference
 - **training_evaluation.md**: Training, metrics, calibration, interpretability (5,900 words)
 
 **Total comprehensive documentation**: ~28,000 words across modular reference files.
-

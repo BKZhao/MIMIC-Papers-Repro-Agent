@@ -1,0 +1,13 @@
+{
+  "session_id": "session-lobster-agentic-demo",
+  "answers": {
+    "exposure_variables": "TyG index",
+    "outcome_variables": "28-day mortality",
+    "models": "Cox, Kaplan-Meier, RCS, subgroup analyses",
+    "outputs": "Table 1, KM figure, spline figure, ROC summary"
+  },
+  "instructions": "Apply follow-up answers and continue contract completion.",
+  "run_mode": "agentic_repro",
+  "config_path": "configs/openclaw.agentic.yaml",
+  "dry_run": false
+}

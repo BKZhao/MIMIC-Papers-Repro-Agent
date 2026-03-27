@@ -1,6 +1,6 @@
 ---
 name: statistical-analysis
-description: Guided statistical analysis with test selection and reporting. Use when you need help choosing appropriate tests for your data, assumption checking, power analysis, and APA-formatted results. Best for academic research reporting, test selection guidance. For implementing specific models programmatically use statsmodels.
+description: Guided statistical analysis with test selection and reporting. Use when you need help choosing appropriate tests for your data, assumption checking, power analysis, and APA-formatted results. Best for academic research reporting, analysis planning, and test selection guidance. For implementing 多因素分析, 多变量回归, 亚组回归, 临床队列回归, coefficient tables, or other specific regression models programmatically use statsmodels. Also use for 医学统计, 科研复现, 统计分析方案, Table 1, 描述统计, 假设检验, effect size reporting, and manuscript-ready statistical summaries.
 license: MIT license
 metadata:
     skill-author: K-Dense Inc.
@@ -627,4 +627,3 @@ For questions about:
 **Online resources**:
 - APA Style Guide: https://apastyle.apa.org/
 - Statistical Consulting: Cross Validated (stats.stackexchange.com)
-

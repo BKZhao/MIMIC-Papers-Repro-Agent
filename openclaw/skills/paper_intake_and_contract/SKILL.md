@@ -2,7 +2,10 @@
 
 ## Purpose
 
-Read paper materials and user instructions, then produce a normalized `TaskContract` with cohort logic, variable roles, models, outputs, tables, figures, result targets, preset detection, and study-template inference.
+Read paper materials and user instructions, extract structured `paper_evidence`,
+then produce a normalized `TaskContract` with cohort logic, variable roles,
+models, outputs, tables, figures, result targets, preset detection, and
+study-template inference.
 
 ## Primary entrypoints
 
@@ -20,6 +23,7 @@ Read paper materials and user instructions, then produce a normalized `TaskContr
 
 ## Outputs
 
+- `paper_evidence.json` when structured paper evidence is available
 - persisted `TaskContract`
 - extracted study design summary
 - extracted table and figure target summary
@@ -40,6 +44,7 @@ Read paper materials and user instructions, then produce a normalized `TaskContr
 
 ## Writes
 
+- `shared/sessions/<session_id>/paper_evidence.json`
 - `shared/sessions/<session_id>/task_contract.json`
 - `shared/sessions/<session_id>/session_state.json`
 
@@ -53,6 +58,8 @@ Read paper materials and user instructions, then produce a normalized `TaskContr
 ## Guardrails
 
 - Prefer explicit paper facts over inference.
+- Prefer hybrid behavior:
+  use LLM reasoning for paper understanding when configured, but keep contract normalization deterministic.
 - Avoid cross-paper contamination from unrelated markdown files in the same directory.
 - If key fields are missing, return gaps instead of inventing them.
 - Keep `TaskContract` as the only task schema.

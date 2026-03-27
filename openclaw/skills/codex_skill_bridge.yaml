@@ -1,0 +1,317 @@
+version: "1"
+repo_skill_root: ".codex/skills"
+project_skill_count: 46
+purpose: >
+  Map project-vendored Codex skills into the paper-repro-agent architecture as
+  a supplemental capability layer. These skills inform planning, literature
+  grounding, method selection, figure polishing, and future expansion, but they
+  do not by themselves widen the deterministic OpenClaw runtime contract.
+runtime_boundary:
+  default_mode: reference_only_until_absorbed
+  official_runtime_surfaces:
+    - TaskContract
+    - ClinicalAnalysisFamily registry
+    - deterministic local runners
+    - openclaw/skills/*
+  adoption_rule: >
+    A vendored Codex skill only becomes product capability after its workflow is
+    re-expressed through local code, session artifacts, or an official
+    OpenClaw skill contract in this repository.
+category_groups:
+  writing_review_and_research:
+    title: Writing, review, and literature support
+    usage: planning_assist
+    stage_targets:
+      - paper_extraction
+      - result_comparison
+    skills:
+      - clinical-reports
+      - scientific-writing
+      - literature-review
+      - citation-management
+      - peer-review
+      - pubmed-database
+      - arxiv-database
+      - biorxiv-database
+      - research-lookup
+    notes: >
+      Best for IMRAD drafting, literature grounding, manuscript revision,
+      citation cleanup, and verification-side evidence checks.
+  clinical_statistics_and_econometrics:
+    title: Clinical statistics, causal inference, and econometrics
+    usage: planning_assist_then_absorb
+    stage_targets:
+      - patient_screening
+      - dataset_and_modeling
+      - result_comparison
+    skills:
+      - statistical-analysis
+      - pyhealth
+      - clinicaltrials-database
+      - statsmodels
+      - pymc
+      - scikit-survival
+      - shap
+      - fred-economic-data
+      - usfiscaldata
+      - datacommons-client
+      - edgartools
+    notes: >
+      Highest-value lane for expanding regression coverage, prediction papers,
+      survival modeling, and policy-style causal analysis.
+  bioinformatics_and_multiomics:
+    title: Bioinformatics and multi-omics extension lane
+    usage: future_adoption
+    stage_targets:
+      - dataset_and_modeling
+      - figure_generation
+      - result_comparison
+    skills:
+      - biopython
+      - scikit-bio
+      - gget
+      - pysam
+      - pydeseq2
+      - geo-database
+      - gwas-database
+      - gtex-database
+      - ensembl-database
+      - clinvar-database
+      - gene-database
+      - uniprot-database
+      - scanpy
+      - scvi-tools
+      - anndata
+      - cellxgene-census
+      - kegg-database
+      - reactome-database
+      - string-database
+    notes: >
+      Project-owned and discoverable now, but still planning-reference only
+      until the repo grows explicit omics execution surfaces beyond MIMIC-first
+      clinical workflows.
+  scientific_visualization:
+    title: Publication-ready figures and schematics
+    usage: planning_assist_then_absorb
+    stage_targets:
+      - figure_generation
+      - result_comparison
+    skills:
+      - scientific-visualization
+      - scientific-schematics
+      - matplotlib
+      - seaborn
+      - plotly
+    notes: >
+      Use for plot-family design, journal styling, panel assembly, and
+      scientific schematics once the numeric outputs already exist.
+  workflow_and_repo_ops:
+    title: Repository automation and unattended validation
+    usage: developer_only
+    stage_targets: []
+    skills:
+      - git-github-update
+      - codex-autoresearch
+    notes: >
+      Helpful for maintenance, overnight improve-verify loops, SSH checks, and
+      release workflows, but not part of the scientific runtime path itself.
+openclaw_stage_bridges:
+  paper_extraction:
+    title: Paper extraction support
+    official_runtime_skills:
+      - paper_intake_and_contract
+    bridge_mode: planning_assist
+    codex_categories:
+      - writing_review_and_research
+    primary_codex_skills:
+      - scientific-writing
+      - literature-review
+      - citation-management
+      - pubmed-database
+      - research-lookup
+      - clinical-reports
+    expected_gain:
+      - stronger paper-background interpretation
+      - cleaner section-level drafting plans
+      - better citation grounding during intake
+  patient_screening:
+    title: Cohort and protocol alignment support
+    official_runtime_skills:
+      - mimic_cohort_execution
+    bridge_mode: planning_assist
+    codex_categories:
+      - clinical_statistics_and_econometrics
+      - writing_review_and_research
+    primary_codex_skills:
+      - clinicaltrials-database
+      - pyhealth
+      - clinical-reports
+      - research-lookup
+    expected_gain:
+      - better cohort-definition interpretation
+      - protocol and registry cross-checks
+      - clearer missing-dependency explanations
+  dataset_and_modeling:
+    title: Dataset construction and modeling support
+    official_runtime_skills:
+      - analysis_dataset_expansion
+      - longitudinal_trajectory_execution
+      - survival_stats_execution
+    bridge_mode: planning_assist_then_absorb
+    codex_categories:
+      - clinical_statistics_and_econometrics
+      - bioinformatics_and_multiomics
+    primary_codex_skills:
+      - statistical-analysis
+      - statsmodels
+      - scikit-survival
+      - pymc
+      - shap
+      - pyhealth
+      - scanpy
+      - scvi-tools
+      - anndata
+      - pydeseq2
+    expected_gain:
+      - richer executable analysis specs
+      - better method-family coverage beyond the current native lane
+      - future-ready omics and prediction extensions
+  figure_generation:
+    title: Figure generation support
+    official_runtime_skills:
+      - result_figure_generation
+    bridge_mode: planning_assist_then_absorb
+    codex_categories:
+      - scientific_visualization
+      - bioinformatics_and_multiomics
+    primary_codex_skills:
+      - scientific-visualization
+      - matplotlib
+      - seaborn
+      - plotly
+      - scientific-schematics
+      - pydeseq2
+      - scanpy
+    expected_gain:
+      - publication-grade panel assembly
+      - figure-family templates for future analysis families
+      - clearer separation between exploratory and submission-ready plots
+  result_comparison:
+    title: Verification and reporting support
+    official_runtime_skills:
+      - paper_alignment_verification
+    bridge_mode: planning_assist
+    codex_categories:
+      - writing_review_and_research
+      - scientific_visualization
+      - clinical_statistics_and_econometrics
+    primary_codex_skills:
+      - peer-review
+      - clinical-reports
+      - scientific-writing
+      - citation-management
+      - research-lookup
+      - scientific-visualization
+    expected_gain:
+      - better deviation explanations
+      - clearer reporting-language scaffolds
+      - stronger verification-side literature checks
+analysis_family_handoffs:
+  baseline_table:
+    support_level: native_supported
+    primary_codex_skills:
+      - statistical-analysis
+      - statsmodels
+      - clinical-reports
+  cox_regression:
+    support_level: native_supported
+    primary_codex_skills:
+      - scikit-survival
+      - statsmodels
+      - statistical-analysis
+  restricted_cubic_spline:
+    support_level: native_supported
+    primary_codex_skills:
+      - statsmodels
+      - scientific-visualization
+  logistic_regression:
+    support_level: llm_compiled_then_execute
+    primary_codex_skills:
+      - statsmodels
+      - statistical-analysis
+      - pyhealth
+  calibration_curve:
+    support_level: llm_compiled_then_execute
+    primary_codex_skills:
+      - scientific-visualization
+      - matplotlib
+      - statsmodels
+  decision_curve_analysis:
+    support_level: llm_compiled_then_execute
+    primary_codex_skills:
+      - scientific-visualization
+      - matplotlib
+      - statsmodels
+  shap_explainability:
+    support_level: llm_compiled_then_execute
+    primary_codex_skills:
+      - shap
+      - pyhealth
+      - scientific-visualization
+  competing_risk:
+    support_level: llm_compiled_then_execute
+    primary_codex_skills:
+      - scikit-survival
+      - statsmodels
+      - scientific-visualization
+  bayesian_survival:
+    support_level: llm_compiled_then_execute
+    primary_codex_skills:
+      - pymc
+      - scientific-visualization
+  bioinformatics_extension:
+    support_level: planning_reference
+    primary_codex_skills:
+      - scanpy
+      - anndata
+      - scvi-tools
+      - pydeseq2
+      - biopython
+      - pysam
+future_extension_lanes:
+  clinical_prediction:
+    target_repo_surfaces:
+      - ClinicalAnalysisFamily registry
+      - deterministic executor scaffolds
+      - figure templates for ROC, calibration, DCA, and SHAP
+    primary_codex_skills:
+      - pyhealth
+      - shap
+      - statsmodels
+      - scientific-visualization
+  econometric_policy:
+    target_repo_surfaces:
+      - non-MIMIC dataset adapters
+      - causal inference analysis families
+      - time-series and panel-data executor scaffolds
+    primary_codex_skills:
+      - statsmodels
+      - pymc
+      - fred-economic-data
+      - usfiscaldata
+      - datacommons-client
+      - edgartools
+  omics_reproduction:
+    target_repo_surfaces:
+      - bioinformatics dataset adapters
+      - omics analysis families
+      - publication figure templates for volcano, heatmap, UMAP, and enrichment
+    primary_codex_skills:
+      - scanpy
+      - anndata
+      - scvi-tools
+      - pydeseq2
+      - biopython
+      - kegg-database
+      - reactome-database
+      - string-database

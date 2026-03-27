@@ -51,7 +51,9 @@ params = {
 response = requests.get(url, params=params)
 data = response.json()
 
-print(f"Found {data['totalCount']} trials")
+print(f"Returned {len(data.get('studies', []))} trials on this page")
+if data.get("nextPageToken"):
+    print("Additional pages are available")
 ```
 
 ### Retrieve Specific Trial
@@ -90,7 +92,9 @@ results = search_studies(
     sort="LastUpdatePostDate:desc"
 )
 
-print(f"Found {results['totalCount']} recruiting diabetes trials")
+print(f"Returned {len(results.get('studies', []))} recruiting diabetes trials on this page")
+if results.get("nextPageToken"):
+    print("Additional pages are available")
 for study in results['studies']:
     protocol = study['protocolSection']
     nct_id = protocol['identificationModule']['nctId']
@@ -502,4 +506,3 @@ if 'resultsSection' in study:
 - **API Specification**: OpenAPI 3.0
 
 For complete technical details, see `references/api_reference.md`.
-

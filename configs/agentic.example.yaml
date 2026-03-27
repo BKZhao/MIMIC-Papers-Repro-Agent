@@ -2,7 +2,7 @@ run:
   name: generic-paper-repro
   paper_path: papers/paper.md
   doi: unknown
-  dataset: MIMIC-IV v2.2
+  dataset: MIMIC-IV v3.1
   dry_run: true
   execution_mode: agentic
   interaction_mode: chat
@@ -12,6 +12,7 @@ quality_gates:
   expected_cohort_size: 0
   cohort_tolerance_percent: 5
   max_fail_metrics: 2
+  block_on_cohort_mismatch: false
 
 targets: []
 
@@ -32,13 +33,11 @@ agents:
     enabled: true
   report_agent:
     enabled: true
-  git_update_agent:
-    enabled: false
 
 llm:
   provider: siliconflow
   base_url: https://api.siliconflow.cn/v1
-  default_model: Qwen/Qwen2.5-72B-Instruct
+  default_model: deepseek-ai/DeepSeek-V3
   api_key_env: SILICONFLOW_API_KEY
   temperature: 0.0
   max_tokens: 4000
@@ -62,12 +61,17 @@ agent_routes:
     enabled: true
   report_agent:
     enabled: true
-  git_update_agent:
-    enabled: false
 
 skill_registry:
   external: {}
-  local: {}
+  local:
+    paper_intake_and_contract: openclaw/skills/paper_intake_and_contract/SKILL.md
+    mimic_cohort_execution: openclaw/skills/mimic_cohort_execution/SKILL.md
+    analysis_dataset_expansion: openclaw/skills/analysis_dataset_expansion/SKILL.md
+    longitudinal_trajectory_execution: openclaw/skills/longitudinal_trajectory_execution/SKILL.md
+    survival_stats_execution: openclaw/skills/survival_stats_execution/SKILL.md
+    result_figure_generation: openclaw/skills/result_figure_generation/SKILL.md
+    paper_alignment_verification: openclaw/skills/paper_alignment_verification/SKILL.md
   agent_skill_map: {}
   fallback_behavior: warn
 

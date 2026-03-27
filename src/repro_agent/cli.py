@@ -7,19 +7,25 @@ import subprocess
 import sys
 from pathlib import Path
 
-from .agent_runner import AgentRunner
+from .agentic.runner import AgentRunner
 from .config import PipelineConfig, load_pipeline_config
 from .contracts import SessionState, TaskContract
 from .dataset_adapters import get_dataset_adapter
 from .db.connectors import build_masked_postgres_dsn, load_mimic_pg_env, missing_required_fields
 from .llm import LLMError, OpenAICompatibleClient
-from .openclaw_bridge import describe_openclaw_integration, run_preset_pipeline as bridge_run_preset_pipeline
+from .openclaw_bridge import (
+    continue_session as bridge_continue_session,
+    describe_openclaw_integration,
+    get_lobster_request_template as bridge_get_lobster_request_template,
+    handle_lobster_request as bridge_handle_lobster_request,
+    run_preset_pipeline as bridge_run_preset_pipeline,
+)
 from .pipeline import PaperReproPipeline
-from .preset_registry import get_paper_preset
+from .paper.presets import get_paper_preset
 from .runtime import LocalRuntime
-from .skill_contracts import load_skill_contract_manifest
-from .study_templates import infer_study_template
-from .task_builder import (
+from .registry.skill_contracts import load_skill_contract_manifest
+from .paper.templates import infer_study_template
+from .paper.builder import (
     apply_follow_up_answers,
     build_task_contract,
     find_missing_high_impact_fields,
@@ -81,7 +87,7 @@ def cmd_run_preset_pipeline(args: argparse.Namespace) -> int:
     payload = bridge_run_preset_pipeline(
         project_root=project_root,
         config_path=(project_root / args.config).resolve(),
-        dry_run=(True if getattr(args, "dry_run", False) else None),
+        dry_run=_resolve_dry_run_override(args),
     )
     print(json.dumps(payload, indent=2, ensure_ascii=False))
     return 0 if str(payload.get("status", "")) == "success" else 2
@@ -259,6 +265,20 @@ def cmd_plan_task(args: argparse.Namespace) -> int:
                 "llm_error": payload["llm_error"],
                 "execution_backend": payload["execution_backend"],
                 "execution_supported": payload["execution_supported"],
+                "agent_decision": payload["agent_decision"],
+                "follow_up_questions": payload["follow_up_questions"],
+                "recommended_run_profile": payload["recommended_run_profile"],
+                "selected_agent_sequence": payload["selected_agent_sequence"],
+                "agent_reply": payload["agent_reply"],
+                "analysis_family_route": payload["analysis_family_route"],
+                "analysis_family_route_path": payload["analysis_family_route_path"],
+                "paper_evidence": payload["paper_evidence"],
+                "paper_evidence_path": payload["paper_evidence_path"],
+                "paper_spec_surface": payload["paper_spec_surface"],
+                "paper_spec_surface_path": payload["paper_spec_surface_path"],
+                "analysis_spec_surface": payload["analysis_spec_surface"],
+                "analysis_spec_surface_path": payload["analysis_spec_surface_path"],
+                "task_build_mode": payload["task_build_mode"],
                 "preset": payload["preset"],
                 "study_template": payload["study_template"],
                 "task_summary": summarize_task_contract(contract),
@@ -292,14 +312,31 @@ def cmd_chat(args: argparse.Namespace) -> int:
         "llm_error": payload["llm_error"],
         "execution_backend": payload["execution_backend"],
         "execution_supported": payload["execution_supported"],
+        "agent_decision": payload["agent_decision"],
+        "follow_up_questions": payload["follow_up_questions"],
+        "recommended_run_profile": payload["recommended_run_profile"],
+        "selected_agent_sequence": payload["selected_agent_sequence"],
+        "agent_reply": payload["agent_reply"],
+        "analysis_family_route": payload["analysis_family_route"],
+        "analysis_family_route_path": payload["analysis_family_route_path"],
+        "paper_evidence": payload["paper_evidence"],
+        "paper_evidence_path": payload["paper_evidence_path"],
+        "paper_spec_surface": payload["paper_spec_surface"],
+        "paper_spec_surface_path": payload["paper_spec_surface_path"],
+        "analysis_spec_surface": payload["analysis_spec_surface"],
+        "analysis_spec_surface_path": payload["analysis_spec_surface_path"],
+        "task_build_mode": payload["task_build_mode"],
         "preset": payload["preset"],
         "study_template": payload["study_template"],
         "task_summary": summarize_task_contract(contract),
     }
     if args.run and not payload["missing_high_impact_fields"]:
         runner = AgentRunner(project_root=project_root, config=config)
-        execution = runner.run_task(contract, session=session, dry_run=(True if args.dry_run else None))
+        execution = runner.run_task(contract, session=session, dry_run=_resolve_dry_run_override(args))
         response["execution"] = execution.as_dict()
+        latest_session = LocalRuntime(project_root=project_root).read_session_state(execution.session_id)
+        response["status"] = execution.summary.status.value
+        response["artifacts"] = [artifact.as_dict() for artifact in latest_session.artifact_records]
         print(json.dumps(response, indent=2, ensure_ascii=False))
         return 0 if execution.summary.status.value == "success" else 2
 
@@ -336,6 +373,18 @@ def cmd_run_task(args: argparse.Namespace) -> int:
                         "session_id": session.session_id,
                         "task_contract_path": session.task_contract_path,
                         "missing_high_impact_fields": payload["missing_high_impact_fields"],
+                        "follow_up_questions": payload["follow_up_questions"],
+                        "recommended_run_profile": payload["recommended_run_profile"],
+                        "agent_reply": payload["agent_reply"],
+                        "analysis_family_route": payload["analysis_family_route"],
+                        "analysis_family_route_path": payload["analysis_family_route_path"],
+                        "paper_evidence": payload["paper_evidence"],
+                        "paper_evidence_path": payload["paper_evidence_path"],
+                        "paper_spec_surface": payload["paper_spec_surface"],
+                        "paper_spec_surface_path": payload["paper_spec_surface_path"],
+                        "analysis_spec_surface": payload["analysis_spec_surface"],
+                        "analysis_spec_surface_path": payload["analysis_spec_surface_path"],
+                        "task_build_mode": payload["task_build_mode"],
                         "task_summary": summarize_task_contract(contract),
                     },
                     indent=2,
@@ -344,8 +393,12 @@ def cmd_run_task(args: argparse.Namespace) -> int:
             )
             return 2
 
-    execution = runner.run_task(contract, session=session, dry_run=(True if args.dry_run else None))
-    print(json.dumps(execution.as_dict(), indent=2, ensure_ascii=False))
+    execution = runner.run_task(contract, session=session, dry_run=_resolve_dry_run_override(args))
+    latest_session = LocalRuntime(project_root=project_root).read_session_state(execution.session_id)
+    payload = execution.as_dict()
+    payload["status"] = execution.summary.status.value
+    payload["artifacts"] = [artifact.as_dict() for artifact in latest_session.artifact_records]
+    print(json.dumps(payload, indent=2, ensure_ascii=False))
     return 0 if execution.summary.status.value == "success" else 2
 
 
@@ -369,27 +422,92 @@ def cmd_export_contract(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_continue_session(args: argparse.Namespace) -> int:
+    project_root = _resolve_project_root(getattr(args, "project_root", None))
+    _load_project_env(project_root)
+    payload = bridge_continue_session(
+        project_root=project_root,
+        config_path=(project_root / args.config).resolve(),
+        session_id=args.session_id,
+        answers=_parse_answer_inputs(args, project_root),
+        instructions=_read_optional_instructions(args, project_root),
+        run_if_ready=bool(getattr(args, "run", False)),
+        dry_run=_resolve_dry_run_override(args),
+    )
+    print(json.dumps(payload, indent=2, ensure_ascii=False))
+    if "execution" in payload:
+        status = str(payload["execution"]["summary"]["status"])
+        return 0 if status == "success" else 2
+    return 0
+
+
+def cmd_lobster_request(args: argparse.Namespace) -> int:
+    project_root = _resolve_project_root(getattr(args, "project_root", None))
+    _load_project_env(project_root)
+
+    if bool(args.template) and (bool(args.request_file) or bool(args.request_json)):
+        raise SystemExit("--template cannot be used together with --request-file or --request-json")
+
+    if args.template:
+        payload = bridge_get_lobster_request_template(str(args.template))
+        print(json.dumps(payload, indent=2, ensure_ascii=False))
+        return 0
+
+    if bool(args.request_file) and bool(args.request_json):
+        raise SystemExit("Use either --request-file or --request-json, not both")
+    if not args.request_file and not args.request_json:
+        raise SystemExit("Either --template, --request-file, or --request-json is required")
+
+    if args.request_file:
+        request_path = Path(args.request_file)
+        if not request_path.is_absolute():
+            request_path = (project_root / request_path).resolve()
+        request_payload = json.loads(request_path.read_text(encoding="utf-8"))
+    else:
+        request_payload = json.loads(args.request_json)
+
+    if not isinstance(request_payload, dict):
+        raise SystemExit("Lobster request payload must be a JSON object")
+
+    payload = bridge_handle_lobster_request(
+        project_root=project_root,
+        request=request_payload,
+    )
+    print(json.dumps(payload, indent=2, ensure_ascii=False))
+
+    top_status = str(payload.get("status", "")).strip().lower()
+    execution = payload.get("execution")
+    if isinstance(execution, dict):
+        execution_status = str(execution.get("status", "")).strip().lower()
+        if execution_status == "failed":
+            return 2
+    if top_status == "failed":
+        return 2
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="paper-repro", description="Clinical paper reproduction multi-subagent framework")
     sub = parser.add_subparsers(dest="command", required=True)
 
-    dry = sub.add_parser("dry-run", help="Run full pipeline with synthetic/stub artifacts")
+    dry = sub.add_parser("dry-run", help="[deprecated] Run the legacy pipeline with synthetic/stub artifacts")
     dry.add_argument("--project-root", type=str, default=".")
     dry.add_argument("--config", type=str, default="configs/pipeline.example.yaml")
     dry.set_defaults(func=cmd_dry_run)
 
-    run = sub.add_parser("run", help="Run pipeline in production mode (adapter implementation required)")
+    run = sub.add_parser("run", help="[deprecated] Run the legacy pipeline in production mode")
     run.add_argument("--project-root", type=str, default=".")
     run.add_argument("--config", type=str, default="configs/pipeline.example.yaml")
     run.set_defaults(func=cmd_run)
 
     run_preset = sub.add_parser(
         "run-preset-pipeline",
-        help="Run the deterministic preset pipeline through the stable OpenClaw-facing interface",
+        help="[deprecated] Run the legacy deterministic preset pipeline compatibility path",
     )
     run_preset.add_argument("--project-root", type=str, default=".")
     run_preset.add_argument("--config", type=str, default="configs/pipeline.example.yaml")
     run_preset.add_argument("--dry-run", action="store_true")
+    run_preset.add_argument("--real-run", action="store_true")
     run_preset.set_defaults(func=cmd_run_preset_pipeline)
 
     env = sub.add_parser("validate-env", help="Validate required DB environment variables")
@@ -444,6 +562,7 @@ def build_parser() -> argparse.ArgumentParser:
     chat.add_argument("--no-prompt", action="store_true")
     chat.add_argument("--run", action="store_true")
     chat.add_argument("--dry-run", action="store_true")
+    chat.add_argument("--real-run", action="store_true")
     chat.set_defaults(func=cmd_chat)
 
     plan = sub.add_parser("plan-task", help="Create and persist a task contract without executing it")
@@ -456,6 +575,42 @@ def build_parser() -> argparse.ArgumentParser:
     plan.add_argument("--no-llm", action="store_true")
     plan.set_defaults(func=cmd_plan_task)
 
+    continue_session = sub.add_parser(
+        "continue-session",
+        help="Apply follow-up answers to an existing session, refresh the contract, and optionally run if ready",
+    )
+    continue_session.add_argument("--project-root", type=str, default=".")
+    continue_session.add_argument("--config", type=str, default="configs/agentic.example.yaml")
+    continue_session.add_argument("--session-id", type=str, required=True)
+    continue_session.add_argument(
+        "--answer",
+        action="append",
+        default=[],
+        help="Follow-up answer in the form field=value. Can be passed multiple times.",
+    )
+    continue_session.add_argument("--answers-file", type=str, default="")
+    continue_session.add_argument("--instructions", type=str, default="")
+    continue_session.add_argument("--instructions-file", type=str, default="")
+    continue_session.add_argument("--run", action="store_true")
+    continue_session.add_argument("--dry-run", action="store_true")
+    continue_session.add_argument("--real-run", action="store_true")
+    continue_session.set_defaults(func=cmd_continue_session)
+
+    lobster = sub.add_parser(
+        "lobster-request",
+        help="Handle a single Lobster/OpenClaw request object and auto-route plan/continue/run",
+    )
+    lobster.add_argument("--project-root", type=str, default=".")
+    lobster.add_argument(
+        "--template",
+        choices=["plan_only", "agentic_repro", "follow_up"],
+        default="",
+        help="Print a request JSON template and exit",
+    )
+    lobster.add_argument("--request-file", type=str, default="")
+    lobster.add_argument("--request-json", type=str, default="")
+    lobster.set_defaults(func=cmd_lobster_request)
+
     run_task = sub.add_parser("run-task", help="Execute a planned task contract through the multi-subagent runner")
     run_task.add_argument("--project-root", type=str, default=".")
     run_task.add_argument("--config", type=str, default="configs/agentic.example.yaml")
@@ -465,6 +620,7 @@ def build_parser() -> argparse.ArgumentParser:
     run_task.add_argument("--instructions-file", type=str, default="")
     run_task.add_argument("--no-llm", action="store_true")
     run_task.add_argument("--dry-run", action="store_true")
+    run_task.add_argument("--real-run", action="store_true")
     run_task.set_defaults(func=cmd_run_task)
 
     export = sub.add_parser("export-contract", help="Print or write a persisted task contract")
@@ -488,10 +644,45 @@ def _read_instructions(args: argparse.Namespace, project_root: Path) -> str:
     raise SystemExit("Instructions are required via --instructions or --instructions-file")
 
 
+def _resolve_dry_run_override(args: argparse.Namespace) -> bool | None:
+    dry_run = bool(getattr(args, "dry_run", False))
+    real_run = bool(getattr(args, "real_run", False))
+    if dry_run and real_run:
+        raise SystemExit("--dry-run and --real-run cannot be used together")
+    if dry_run:
+        return True
+    if real_run:
+        return False
+    return None
+
+
+def _read_optional_instructions(args: argparse.Namespace, project_root: Path) -> str:
+    if getattr(args, "instructions", ""):
+        return str(args.instructions).strip()
+    instructions_file = getattr(args, "instructions_file", "")
+    if not instructions_file:
+        return ""
+    path = Path(instructions_file)
+    if not path.is_absolute():
+        path = (project_root / path).resolve()
+    return path.read_text(encoding="utf-8").strip()
+
+
 def _read_json_path(project_root: Path, path_str: str) -> dict:
     path = Path(path_str)
     if not path.is_absolute():
         path = (project_root / path).resolve()
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def _read_optional_json_path(project_root: Path, path_str: str) -> dict:
+    if not str(path_str).strip():
+        return {}
+    path = Path(path_str)
+    if not path.is_absolute():
+        path = (project_root / path).resolve()
+    if not path.exists():
+        return {}
     return json.loads(path.read_text(encoding="utf-8"))
 
 
@@ -540,18 +731,58 @@ def _plan_task_flow(
         instructions=instructions,
         session_id=session_id,
     )
+    _persist_cli_task_build_artifacts(runtime=runner.runtime, session=session, task_result=task_result)
+    decision = runner.prepare_agent_decision(contract, session)
     support = get_dataset_adapter(contract.dataset.adapter).describe_contract(contract)
     preset = get_paper_preset(contract.meta.get("preset"))
     template = infer_study_template(contract)
     return contract, session, {
-        "missing_high_impact_fields": missing_high_impact_fields,
+        "missing_high_impact_fields": list(decision.missing_high_impact_fields),
         "used_llm": task_result.used_llm,
         "llm_error": task_result.llm_error,
         "execution_backend": support.execution_backend,
         "execution_supported": support.execution_supported,
+        "agent_decision": decision.as_dict(),
+        "follow_up_questions": [item.as_dict() for item in decision.follow_up_questions],
+        "recommended_run_profile": decision.recommended_run_profile,
+        "selected_agent_sequence": list(decision.selected_agent_sequence),
+        "agent_reply": _read_agent_reply(project_root, session),
+        "analysis_family_route": dict(decision.analysis_family_route),
+        "analysis_family_route_path": str(session.meta.get("analysis_family_route_path", "")),
         "preset": preset.as_dict() if preset is not None else None,
         "study_template": template.as_dict() if template is not None else None,
+        "paper_evidence": task_result.paper_evidence,
+        "paper_evidence_path": str(session.meta.get("paper_evidence_path", "")),
+        "paper_spec_surface": _read_optional_json_path(project_root, str(session.meta.get("paper_spec_surface_path", ""))),
+        "paper_spec_surface_path": str(session.meta.get("paper_spec_surface_path", "")),
+        "analysis_spec_surface": _read_optional_json_path(
+            project_root,
+            str(session.meta.get("analysis_spec_surface_path", "")),
+        ),
+        "analysis_spec_surface_path": str(session.meta.get("analysis_spec_surface_path", "")),
+        "task_build_mode": str(session.meta.get("task_build_mode", "")),
     }
+
+
+def _persist_cli_task_build_artifacts(
+    *,
+    runtime: LocalRuntime,
+    session: SessionState,
+    task_result: object,
+) -> None:
+    build_mode = "deterministic_only"
+    if bool(getattr(task_result, "used_llm", False)):
+        build_mode = "hybrid_llm_assisted"
+    elif str(getattr(task_result, "llm_error", "")).strip():
+        build_mode = "deterministic_fallback_after_llm_error"
+    session.meta["task_build_mode"] = build_mode
+
+    paper_evidence = getattr(task_result, "paper_evidence", None)
+    if isinstance(paper_evidence, dict) and paper_evidence:
+        rel_path = f"shared/sessions/{session.session_id}/paper_evidence.json"
+        runtime.write_json(rel_path, paper_evidence)
+        session.meta["paper_evidence_path"] = rel_path
+    runtime.write_session_state(session)
 
 
 def _prompt_for_missing_fields(missing_fields: list[str]) -> dict[str, str]:
@@ -570,6 +801,43 @@ def _prompt_for_missing_fields(missing_fields: list[str]) -> dict[str, str]:
         if value:
             answers[field] = value
     return answers
+
+
+def _parse_answer_inputs(args: argparse.Namespace, project_root: Path) -> dict[str, str]:
+    answers: dict[str, str] = {}
+    answers_file = getattr(args, "answers_file", "")
+    if answers_file:
+        path = Path(answers_file)
+        if not path.is_absolute():
+            path = (project_root / path).resolve()
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(payload, dict):
+            raise SystemExit("--answers-file must contain a JSON object")
+        for key, value in payload.items():
+            key_text = str(key).strip()
+            value_text = str(value).strip()
+            if key_text and value_text:
+                answers[key_text] = value_text
+    for raw in getattr(args, "answer", []) or []:
+        key, sep, value = str(raw).partition("=")
+        if not sep:
+            raise SystemExit(f"Invalid --answer value '{raw}'. Use field=value.")
+        key_text = key.strip()
+        value_text = value.strip()
+        if not key_text or not value_text:
+            raise SystemExit(f"Invalid --answer value '{raw}'. Use field=value.")
+        answers[key_text] = value_text
+    return answers
+
+
+def _read_agent_reply(project_root: Path, session: SessionState) -> str:
+    rel_path = str(session.meta.get("agent_reply_path", "")).strip()
+    if not rel_path:
+        return ""
+    path = (project_root / rel_path).resolve()
+    if not path.exists():
+        return ""
+    return path.read_text(encoding="utf-8")
 
 
 def main() -> int:

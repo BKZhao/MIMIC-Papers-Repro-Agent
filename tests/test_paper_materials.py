@@ -10,7 +10,7 @@ from unittest.mock import patch
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
-from repro_agent.paper_materials import collect_paper_materials, extract_pdf_text  # noqa: E402
+from repro_agent.paper.materials import collect_paper_materials, extract_pdf_text  # noqa: E402
 
 
 class PaperMaterialsTests(unittest.TestCase):
@@ -22,7 +22,7 @@ class PaperMaterialsTests(unittest.TestCase):
             markdown_path = project_root / "paper.md"
             markdown_path.write_text("Structured companion markdown", encoding="utf-8")
 
-            with patch("repro_agent.paper_materials.extract_pdf_text", return_value="PDF body text") as extractor:
+            with patch("repro_agent.paper.materials.extract_pdf_text", return_value="PDF body text") as extractor:
                 materials = collect_paper_materials(pdf_path)
 
             extractor.assert_called_once_with(pdf_path)
@@ -37,7 +37,7 @@ class PaperMaterialsTests(unittest.TestCase):
             (project_root / "MIMIC.md").write_text("Old TyG design that should not leak in", encoding="utf-8")
             (project_root / "table.md").write_text("Old TyG table that should not leak in", encoding="utf-8")
 
-            with patch("repro_agent.paper_materials.extract_pdf_text", return_value="NLR paper text"):
+            with patch("repro_agent.paper.materials.extract_pdf_text", return_value="NLR paper text"):
                 materials = collect_paper_materials(pdf_path)
 
             self.assertEqual(materials, {"nlr-study.pdf": "NLR paper text"})
@@ -48,13 +48,13 @@ class PaperMaterialsTests(unittest.TestCase):
             pdf_path.write_bytes(b"%PDF-1.4\n")
 
             with patch(
-                "repro_agent.paper_materials._extract_pdf_text_with_pymupdf",
+                "repro_agent.paper.materials._extract_pdf_text_with_pymupdf",
                 side_effect=RuntimeError("pymupdf unavailable"),
             ), patch(
-                "repro_agent.paper_materials._extract_pdf_text_with_pdfplumber",
+                "repro_agent.paper.materials._extract_pdf_text_with_pdfplumber",
                 side_effect=RuntimeError("pdfplumber unavailable"),
             ), patch(
-                "repro_agent.paper_materials._extract_pdf_text_with_ghostscript",
+                "repro_agent.paper.materials._extract_pdf_text_with_ghostscript",
                 return_value="  Title line \n\n  Abstract line  ",
             ):
                 text = extract_pdf_text(pdf_path)

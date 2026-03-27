@@ -79,10 +79,12 @@ curl "https://clinicaltrials.gov/api/v2/studies?query.cond=lung+cancer&filter.ov
       "hasResults": false
     }
   ],
-  "totalCount": 1234,
-  "pageToken": "next_page_token_here"
+  "nextPageToken": "next_page_token_here",
+  "totalCount": 1234
 }
 ```
+
+`totalCount` should be treated as optional in client code. In current live responses, `studies` and `nextPageToken` are reliable page-level fields; `totalCount` may be absent.
 
 ### 2. Get Study Details
 
@@ -168,7 +170,9 @@ params = {
 response = requests.get(url, params=params)
 data = response.json()
 
-print(f"Found {data['totalCount']} recruiting breast cancer trials")
+print(f"Returned {len(data.get('studies', []))} recruiting breast cancer trials on this page")
+if data.get("nextPageToken"):
+    print("Additional pages are available")
 for study in data['studies']:
     nct_id = study['protocolSection']['identificationModule']['nctId']
     title = study['protocolSection']['identificationModule']['briefTitle']

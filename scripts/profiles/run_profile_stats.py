@@ -10,7 +10,7 @@ SRC_DIR = Path(__file__).resolve().parents[2] / "src"
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
-from repro_agent.profile_stats import run_profile_stats  # noqa: E402
+from repro_agent.analysis.profile_stats import run_profile_stats  # noqa: E402
 
 
 def main() -> int:
@@ -20,6 +20,8 @@ def main() -> int:
     parser.add_argument("--analysis-dataset", type=str, default="")
     parser.add_argument("--missingness", type=str, default="")
     parser.add_argument("--artifact-subdir", type=str, default="")
+    parser.add_argument("--execution-environment-version", type=str, default="")
+    parser.add_argument("--execution-year-window", type=str, default="")
     args = parser.parse_args()
 
     project_root = Path(args.project_root).resolve()
@@ -32,6 +34,8 @@ def main() -> int:
         analysis_dataset_rel=analysis_dataset_rel,
         missingness_rel=missingness_rel,
         artifact_subdir=args.artifact_subdir,
+        execution_environment_dataset_version=args.execution_environment_version,
+        execution_year_window=args.execution_year_window,
     )
     print(
         json.dumps(

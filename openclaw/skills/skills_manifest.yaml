@@ -1,12 +1,17 @@
 version: "1"
 agent_name: paper-repro-scientist
+bridge_artifacts:
+  codex_skill_bridge:
+    path: openclaw/skills/codex_skill_bridge.yaml
+    purpose: Map project-vendored .codex skills into OpenClaw stages and adoption lanes without claiming native runtime executability.
+    posture: supplemental_reference_layer
 skills:
   paper_intake_and_contract:
     title: Paper Intake And Contract
     stage: paper_extraction
     path: openclaw/skills/paper_intake_and_contract/SKILL.md
     execution_preference: hybrid
-    purpose: Read paper materials and user instructions, then extract the study design, variables, tables, figures, and result targets into a normalized TaskContract.
+    purpose: Read paper materials and user instructions, extract structured paper evidence, and normalize the study design, variables, tables, figures, and result targets into a TaskContract.
     primary_entrypoints:
       - repro_agent.openclaw_bridge.plan_task(...)
       - paper-repro plan-task
@@ -20,6 +25,7 @@ skills:
     outputs:
       - persisted TaskContract
       - paper evidence summary
+      - paper_evidence.json when available
       - missing_high_impact_fields
       - execution_backend
       - preset
@@ -33,10 +39,12 @@ skills:
       - sibling si.docx in legacy single-paper layout
       - semantic registry config when available
     writes:
+      - shared/sessions/<session_id>/paper_evidence.json
       - shared/sessions/<session_id>/task_contract.json
       - shared/sessions/<session_id>/session_state.json
     guardrails:
       - Prefer explicit paper facts over inference.
+      - Use LLM reasoning for non-structured paper understanding when configured, but keep task normalization deterministic and auditable.
       - Avoid cross-paper contamination from unrelated files in the same directory.
       - If key fields are missing, return gaps instead of inventing them.
       - Keep TaskContract as the only task schema.
@@ -97,12 +105,41 @@ skills:
     fails_when:
       - required cohort artifacts are absent
       - required variables cannot be sourced for a preset that claims full execution
+  longitudinal_trajectory_execution:
+    title: Longitudinal Trajectory Execution
+    stage: dataset_and_modeling
+    path: openclaw/skills/longitudinal_trajectory_execution/SKILL.md
+    execution_preference: deterministic_preferred
+    purpose: Extract repeated-measurement panels, derive trajectory classes with the local Python backend, and bridge those classes into downstream survival analysis artifacts.
+    primary_entrypoints:
+      - repro_agent.openclaw_bridge.run_task(...)
+      - scripts/profiles/build_profile_analysis_dataset.py
+      - scripts/profiles/run_profile_stats.py
+    inputs:
+      - TaskContract
+      - repeated measurement definitions from the paper
+      - analysis dataset with hourly panel columns
+      - trajectory backend settings such as class count and time window
+    outputs:
+      - trajectory class assignments
+      - trajectory summary table
+      - trajectory figure
+      - downstream-ready exposure labels for KM and Cox
+      - method-gap notes when the backend is not paper-identical
+    guardrails:
+      - Keep the measurement window and interval aligned with the paper.
+      - Never present the Python backend as paper-identical LGMM unless that is truly implemented.
+      - Block explicitly if the repeated panel cannot be built.
+    fails_when:
+      - required repeated measurements are missing
+      - trajectory fitting fails or produces unusable classes
+      - downstream survival artifacts cannot be linked to trajectory labels
   survival_stats_execution:
     title: Survival Stats Execution
     stage: dataset_and_modeling
     path: openclaw/skills/survival_stats_execution/SKILL.md
     execution_preference: deterministic_preferred
-    purpose: Run or plan the main clinical statistics workflow, including baseline summaries, Kaplan-Meier analysis, Cox regression, restricted cubic splines, subgroup analysis, and related figures.
+    purpose: Run or plan the main clinical statistics workflow, including baseline summaries, Kaplan-Meier analysis, Cox regression, restricted cubic splines, subgroup analysis, ROC, and hybrid scaffold requests for method families that are not yet natively wired.
     primary_entrypoints:
       - repro_agent.openclaw_bridge.run_task(...)
       - deterministic pipeline steps under PaperReproPipeline
@@ -114,11 +151,14 @@ skills:
       - baseline table
       - model result tables
       - KM, RCS, and subgroup artifacts
+      - ROC artifacts when supported
+      - execution scaffold requests for hybrid families such as logistic, calibration, DCA, nomogram, or SHAP
       - stats summary diagnostics
       - deterministic bridge summary when applicable
       - unsupported-analysis notes
     guardrails:
       - Deterministic execution is preferred over LLM reasoning.
+      - Use LLM support for route choice and executable scaffold drafting only when the paper method is ambiguous or not yet natively wired.
       - If a contract is planning-only, emit model blueprints and clearly state execution is blocked.
       - Keep produced figures and tables aligned with requested outputs.
     fails_when:
@@ -180,25 +220,3 @@ skills:
     success_criteria:
       - return a machine-readable verification artifact
       - explain whether deviations come from cohort mismatch, baseline mismatch, model mismatch, or missing artifacts
-  git_update:
-    title: Git Update
-    stage: ops
-    path: openclaw/skills/git_update/SKILL.md
-    execution_preference: controlled_side_effect
-    purpose: Provide a stable project-owned Git and GitHub update workflow so OpenClaw can request repository sync behavior without embedding Git logic into every agent prompt.
-    primary_entrypoints:
-      - scripts/git_update.sh
-      - paper-repro session artifacts for git_update_agent
-    inputs:
-      - repo working tree
-      - commit message or update intent
-    outputs:
-      - git update plan artifact
-      - repository sync side effects only when explicitly invoked
-    guardrails:
-      - Do not push automatically just because a session ran.
-      - Preserve user changes and avoid destructive git commands.
-      - Keep repository update behavior behind the fixed helper skill.
-    fails_when:
-      - git working tree is dirty in a conflicting way
-      - credentials or remote access are not available

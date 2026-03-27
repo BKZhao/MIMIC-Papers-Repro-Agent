@@ -1,0 +1,9 @@
+{
+  "paper_path": "papers/s12890-025-04067-0.pdf",
+  "instructions": "Read the paper, build a TaskContract, and auto-run when execution is ready.",
+  "session_id": "session-lobster-agentic-demo",
+  "run_mode": "agentic_repro",
+  "config_path": "configs/openclaw.agentic.yaml",
+  "use_llm": true,
+  "dry_run": false
+}

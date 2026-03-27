@@ -2,7 +2,7 @@ run:
   name: openclaw-paper-repro
   paper_path: papers/paper.md
   doi: unknown
-  dataset: MIMIC-IV v2.2
+  dataset: MIMIC-IV v3.1
   dry_run: true
   execution_mode: agentic
   interaction_mode: chat
@@ -32,13 +32,11 @@ agents:
     enabled: true
   report_agent:
     enabled: true
-  git_update_agent:
-    enabled: true
 
 llm:
   provider: siliconflow
   base_url: https://api.siliconflow.cn/v1
-  default_model: Qwen/Qwen2.5-72B-Instruct
+  default_model: deepseek-ai/DeepSeek-V3
   api_key_env: SILICONFLOW_API_KEY
   temperature: 0.0
   max_tokens: 4000
@@ -49,24 +47,22 @@ agent_routes:
   paper_parser_agent:
     enabled: true
     provider: siliconflow
-    model: Qwen/Qwen2.5-72B-Instruct
+    model: deepseek-ai/DeepSeek-V3
     allowed_skills:
       - paper_intake_and_contract
-      - clinical-reports
   study_design_agent:
     enabled: true
     provider: siliconflow
-    model: Qwen/Qwen2.5-72B-Instruct
+    model: deepseek-ai/DeepSeek-V3
     allowed_skills:
       - paper_intake_and_contract
-      - statistical-analysis
+      - paper_alignment_verification
   cohort_agent:
     enabled: true
     provider: deterministic
     model: local-sql-blueprint
     allowed_skills:
       - mimic_cohort_execution
-      - pyhealth
     tool_boundary:
       - deterministic_only
   feature_agent:
@@ -75,7 +71,7 @@ agent_routes:
     model: local-wide-table-expander
     allowed_skills:
       - analysis_dataset_expansion
-      - pyhealth
+      - longitudinal_trajectory_execution
     tool_boundary:
       - deterministic_only
   stats_agent:
@@ -83,8 +79,8 @@ agent_routes:
     provider: deterministic
     model: local-survival-stats
     allowed_skills:
+      - longitudinal_trajectory_execution
       - survival_stats_execution
-      - statistical-analysis
     tool_boundary:
       - deterministic_only
   figure_agent:
@@ -93,46 +89,31 @@ agent_routes:
     model: local-artifact-compiler
     allowed_skills:
       - result_figure_generation
-      - clinical-reports
     tool_boundary:
       - deterministic_only
   verify_agent:
     enabled: true
     provider: siliconflow
-    model: Qwen/Qwen2.5-72B-Instruct
+    model: deepseek-ai/DeepSeek-V3
     allowed_skills:
       - paper_alignment_verification
-      - clinical-reports
   report_agent:
     enabled: true
     provider: siliconflow
-    model: Qwen/Qwen2.5-72B-Instruct
+    model: deepseek-ai/DeepSeek-V3
     allowed_skills:
       - paper_alignment_verification
-      - clinical-reports
-  git_update_agent:
-    enabled: true
-    provider: deterministic
-    model: local-git-helper
-    allowed_skills:
-      - git_update
-    tool_boundary:
-      - deterministic_only
 
 skill_registry:
-  external:
-    pyhealth: .codex/skills/pyhealth
-    clinicaltrials-database: .codex/skills/clinicaltrials-database
-    clinical-reports: .codex/skills/clinical-reports
-    statistical-analysis: .codex/skills/statistical-analysis
+  external: {}
   local:
     paper_intake_and_contract: openclaw/skills/paper_intake_and_contract/SKILL.md
     mimic_cohort_execution: openclaw/skills/mimic_cohort_execution/SKILL.md
     analysis_dataset_expansion: openclaw/skills/analysis_dataset_expansion/SKILL.md
+    longitudinal_trajectory_execution: openclaw/skills/longitudinal_trajectory_execution/SKILL.md
     survival_stats_execution: openclaw/skills/survival_stats_execution/SKILL.md
     result_figure_generation: openclaw/skills/result_figure_generation/SKILL.md
     paper_alignment_verification: openclaw/skills/paper_alignment_verification/SKILL.md
-    git_update: openclaw/skills/git_update/SKILL.md
   agent_skill_map: {}
   fallback_behavior: warn
 
