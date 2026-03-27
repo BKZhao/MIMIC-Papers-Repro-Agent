@@ -181,12 +181,19 @@ The active built-in profiles currently include:
 - `mimic_tyg_sepsis`
 - `mimic_nlr_sepsis_elderly`
 - `mimic_hr_trajectory_sepsis`
+- `mimic_tyg_stroke_nondiabetic`
 
 The trajectory profile is explicitly experimental:
 
 - paper-required method: `LGMM`
 - engine backend: `trajectory_python_bridge`
 - fidelity: `method-aligned, not paper-identical`
+
+The non-diabetic ischemic stroke TyG profile is also experimental:
+
+- engine backend: `profile_survival_bridge`
+- paper scope: multi-endpoint mortality survival analysis in MIMIC-IV v3.1
+- current method gaps: fasting semantics approximation, coding-based intervention flags, and missing MICE/PSM sensitivity execution
 
 ## Artifacts
 
@@ -241,6 +248,13 @@ paper-repro describe-openclaw
 paper-repro describe-skills
 ```
 
+6. Optional: run a Lobster single-entrypoint smoke test:
+
+```bash
+paper-repro lobster-request --template plan_only
+paper-repro lobster-request --request-file configs/lobster.request.plan-only.example.json
+```
+
 ## OpenClaw
 
 The repository exposes one external agent:
@@ -249,6 +263,13 @@ The repository exposes one external agent:
 - soul: [`openclaw/SOUL.MD`](openclaw/SOUL.MD)
 - operational rules: [`openclaw/AGENTS.md`](openclaw/AGENTS.md)
 - machine-readable skill surface: [`openclaw/skills/skills_manifest.yaml`](openclaw/skills/skills_manifest.yaml)
+
+Recommended single-entrypoint interface for external orchestrators:
+
+- `paper-repro lobster-request`
+- `configs/lobster.request.plan-only.example.json`
+- `configs/lobster.request.agentic-repro.example.json`
+- `configs/lobster.request.follow-up.example.json`
 
 The official project-owned skills are:
 
