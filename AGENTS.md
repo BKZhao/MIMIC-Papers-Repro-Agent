@@ -5,8 +5,8 @@ This repository no longer uses this file as the primary orchestration contract.
 Current source of truth:
 
 - `README.md`
-- `docs/architecture.md`
-- `docs/clinical-analysis-capability-map.md`
+- `docs/architecture/architecture.md`
+- `docs/architecture/clinical-analysis-capability-map.md`
 - `openclaw/SOUL.MD`
 - `openclaw/AGENTS.md`
 - `openclaw/skills/skills_manifest.yaml`

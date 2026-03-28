@@ -167,4 +167,4 @@ High-value references:
 For the grouped adoption roadmap, see
 [`supplemental-codex-skill-map.md`](supplemental-codex-skill-map.md).
 The machine-readable bridge for these supplemental skills now lives in
-[`../openclaw/skills/codex_skill_bridge.yaml`](../openclaw/skills/codex_skill_bridge.yaml).
+[`../../openclaw/skills/codex_skill_bridge.yaml`](../../openclaw/skills/codex_skill_bridge.yaml).

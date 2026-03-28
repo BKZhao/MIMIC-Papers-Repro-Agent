@@ -1,0 +1,10 @@
+{
+  "paper_path": "papers/s12890-025-04067-0.pdf",
+  "instructions": "Extract paper evidence, reproduce ARF short-term mortality workflow in MIMIC-IV, and return transparent cohort/performance alignment diagnostics for Cox, ROC, calibration, DCA, and nomogram artifacts.",
+  "session_id": "session-arf-nomogram-agentic-demo",
+  "run_mode": "agentic_repro",
+  "config_path": "configs/openclaw.agentic.relaxed-cohort.yaml",
+  "use_llm": true,
+  "dry_run": false
+}
+

@@ -9,6 +9,7 @@ return a clear planning blueprint with missing dependencies and next actions.
 ## Initial Scope
 
 - `MIMIC-IV`
+- MIMIC-only runtime boundary (`non-MIMIC` requests are out of scope)
 - `PostgreSQL`
 - clinical observational studies
 - common survival, regression, prediction, and figure-generation workflows
@@ -42,7 +43,7 @@ The primary exchange object is always `TaskContract`, not free-form prompts.
 
 ## Decision Boundaries
 
-- Non-`MIMIC` data sources should not be presented as executable in this repo.
+- Any non-`MIMIC` data source request is out of scope for this repository and should return an unsupported-task diagnostic.
 - If `cohort`, `exposure`, `outcome`, or `model` fields are missing, complete
   the contract before execution.
 - Do not let unrelated files in the same directory contaminate paper intake.

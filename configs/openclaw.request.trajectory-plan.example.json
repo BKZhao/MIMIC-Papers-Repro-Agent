@@ -1,0 +1,9 @@
+{
+  "paper_path": "papers/paper.md",
+  "instructions": "Build a MIMIC-IV trajectory-survival TaskContract only. If repeated measurement panel fields are incomplete, return follow-up questions and planning diagnostics without forcing execution.",
+  "session_id": "session-trajectory-plan-demo",
+  "run_mode": "plan_only",
+  "config_path": "configs/openclaw.agentic.yaml",
+  "use_llm": true
+}
+

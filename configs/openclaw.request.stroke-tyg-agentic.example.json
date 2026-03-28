@@ -1,0 +1,10 @@
+{
+  "paper_path": "papers/s12890-025-04067-0.pdf",
+  "instructions": "Read the paper with LLM evidence extraction first, then run the supported MIMIC-IV multi-endpoint survival reproduction path with explicit method-gap notes.",
+  "session_id": "session-stroke-tyg-agentic-demo",
+  "run_mode": "agentic_repro",
+  "config_path": "configs/openclaw.agentic.relaxed-cohort.yaml",
+  "use_llm": true,
+  "dry_run": false
+}
+

@@ -49,14 +49,15 @@ class DatasetAdapter:
         execution_year_window = str(contract.meta.get("execution_year_window", "")).strip()
         return AdapterSupport(
             adapter_name=self.name,
-            planning_supported=True,
+            planning_supported=False,
             execution_supported=False,
             execution_backend="spec_only",
             notes=[
-                "Generic task planning is available.",
-                "Executable dataset-specific extraction is not implemented for this adapter yet.",
+                "This repository is intentionally MIMIC-only in runtime scope.",
+                "Non-MIMIC dataset adapters are out of scope and should return unsupported-task diagnostics.",
             ],
             missing_capabilities=[
+                "non-MIMIC dataset support is intentionally disabled in this repository",
                 "dataset-specific cohort SQL compilation",
                 "variable-to-field mapping",
                 "model-ready feature extraction",

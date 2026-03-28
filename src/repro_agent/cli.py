@@ -13,6 +13,7 @@ from .contracts import SessionState, TaskContract
 from .dataset_adapters import get_dataset_adapter
 from .db.connectors import build_masked_postgres_dsn, load_mimic_pg_env, missing_required_fields
 from .llm import LLMError, OpenAICompatibleClient
+from .legacy.pipeline import LegacyPaperReproPipeline
 from .openclaw_bridge import (
     continue_session as bridge_continue_session,
     describe_openclaw_integration,
@@ -20,7 +21,6 @@ from .openclaw_bridge import (
     handle_openclaw_request as bridge_handle_openclaw_request,
     run_preset_pipeline as bridge_run_preset_pipeline,
 )
-from .pipeline import PaperReproPipeline
 from .paper.presets import get_paper_preset
 from .runtime import LocalRuntime
 from .registry.skill_contracts import load_skill_contract_manifest
@@ -64,7 +64,7 @@ def cmd_dry_run(args: argparse.Namespace) -> int:
     config_path = (project_root / args.config).resolve()
     config = load_pipeline_config(config_path)
 
-    pipeline = PaperReproPipeline(project_root=project_root, config=config)
+    pipeline = LegacyPaperReproPipeline(project_root=project_root, config=config)
     summary = pipeline.run(dry_run=True)
     print(json.dumps(summary.as_dict(), indent=2, ensure_ascii=False))
     return 0 if summary.status.value == "success" else 2
@@ -75,7 +75,7 @@ def cmd_run(args: argparse.Namespace) -> int:
     _load_project_env(project_root)
     config_path = (project_root / args.config).resolve()
     config = load_pipeline_config(config_path)
-    pipeline = PaperReproPipeline(project_root=project_root, config=config)
+    pipeline = LegacyPaperReproPipeline(project_root=project_root, config=config)
     summary = pipeline.run(dry_run=False)
     print(json.dumps(summary.as_dict(), indent=2, ensure_ascii=False))
     return 0 if summary.status.value == "success" else 2

@@ -10,6 +10,7 @@ __all__ = [
     "dataset_adapters",
     "db",
     "integrations",
+    "legacy",
     "llm",
     "openclaw_bridge",
     "paper",

@@ -30,6 +30,7 @@ from ..contracts import (
     TaskContract,
 )
 from ..dataset_adapters import get_dataset_adapter
+from ..legacy.pipeline import LegacyPaperReproPipeline
 from ..llm import LLMError
 from ..analysis.binary_outcome import run_binary_outcome_analysis_workflow
 from ..analysis.scaffolds import build_hybrid_scaffold_bundle
@@ -37,7 +38,6 @@ from ..paper.materials import collect_paper_materials
 from ..paper.presets import get_paper_preset
 from ..paper.spec_surfaces import build_analysis_spec_surface, build_paper_spec_surface
 from ..paper.builder import find_missing_high_impact_fields, summarize_task_contract
-from ..pipeline import PaperReproPipeline
 from ..registry.skills import build_skill_registry, resolve_agent_skills
 from ..runtime import LocalRuntime
 
@@ -452,7 +452,7 @@ class AgentRunner:
             )
 
         bridge_config = _build_bridge_config(self.config, contract)
-        pipeline = PaperReproPipeline(project_root=self.project_root, config=bridge_config)
+        pipeline = LegacyPaperReproPipeline(project_root=self.project_root, config=bridge_config)
         bridge_summary = pipeline.run(dry_run=dry_run)
         self._bridge_step_results = {item.step: item for item in bridge_summary.step_results}
         bridge_step = self._bridge_step_results.get("stats_agent")

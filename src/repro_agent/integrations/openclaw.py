@@ -12,7 +12,7 @@ from ..agentic.runner import AgentRunner
 from ..config import PipelineConfig, load_pipeline_config
 from ..contracts import SessionState, TaskContract
 from ..dataset_adapters import get_dataset_adapter
-from ..pipeline import PaperReproPipeline
+from ..legacy.pipeline import LegacyPaperReproPipeline
 from ..paper.presets import get_paper_preset, list_builtin_presets
 from ..runtime import LocalRuntime
 from ..registry.semantic import SemanticRegistry, load_mimic_semantic_registry
@@ -732,7 +732,7 @@ def run_preset_pipeline(
     project_root = project_root.resolve()
     _load_project_env(project_root)
     config = load_pipeline_config(config_path.resolve())
-    pipeline = PaperReproPipeline(project_root=project_root, config=config)
+    pipeline = LegacyPaperReproPipeline(project_root=project_root, config=config)
     summary = pipeline.run(dry_run=dry_run)
     return summary.as_dict()
 

@@ -36,6 +36,7 @@ The current scope is intentionally narrow:
 - clinical observational studies
 - survival / regression oriented workflows
 - OpenClaw integration through one external agent
+- scope lock: MIMIC-only runtime (`non-MIMIC` datasets are out of scope and reported as unsupported)
 
 ## Framework Snapshot
 
@@ -53,8 +54,9 @@ The current scope is intentionally narrow:
 
 The current source of truth is intentionally small:
 
-- [`docs/architecture.md`](docs/architecture.md)
-- [`docs/clinical-analysis-capability-map.md`](docs/clinical-analysis-capability-map.md)
+- [`docs/architecture/architecture.md`](docs/architecture/architecture.md)
+- [`docs/architecture/clinical-analysis-capability-map.md`](docs/architecture/clinical-analysis-capability-map.md)
+- [`docs/architecture/openclaw-agent-guide-zh.md`](docs/architecture/openclaw-agent-guide-zh.md)
 - [`openclaw/SOUL.MD`](openclaw/SOUL.MD)
 - [`openclaw/AGENTS.md`](openclaw/AGENTS.md)
 - [`openclaw/skills/skills_manifest.yaml`](openclaw/skills/skills_manifest.yaml)
@@ -63,10 +65,19 @@ Developer-local `.codex/skills` content is not part of the default product surfa
 
 We do keep a developer-reference skill pool and use it to guide future method
 expansion. The current mapping lives in
-[`docs/supplemental-codex-skill-map.md`](docs/supplemental-codex-skill-map.md).
+[`docs/architecture/supplemental-codex-skill-map.md`](docs/architecture/supplemental-codex-skill-map.md).
 The machine-readable bridge that connects those vendored skills back into this
 agent lives in
 [`openclaw/skills/codex_skill_bridge.yaml`](openclaw/skills/codex_skill_bridge.yaml).
+
+Operational template references:
+
+- [`docs/report-index.md`](docs/report-index.md)
+- [`docs/reports/project-and-report-consolidation-2026-03-28.md`](docs/reports/project-and-report-consolidation-2026-03-28.md)
+- [`docs/operations/openclaw-mimic-automation-templates-2026-03-28.md`](docs/operations/openclaw-mimic-automation-templates-2026-03-28.md)
+- [`configs/openclaw.request.stroke-tyg-agentic.example.json`](configs/openclaw.request.stroke-tyg-agentic.example.json)
+- [`configs/openclaw.request.arf-nomogram-agentic.example.json`](configs/openclaw.request.arf-nomogram-agentic.example.json)
+- [`configs/openclaw.request.trajectory-plan.example.json`](configs/openclaw.request.trajectory-plan.example.json)
 
 ## Core Concepts
 
@@ -95,6 +106,8 @@ The active code lives under [`src/repro_agent`](src/repro_agent):
   cohort and analysis-dataset SQL builders
 - [`src/repro_agent/db`](src/repro_agent/db)
   database connection helpers
+- [`src/repro_agent/legacy`](src/repro_agent/legacy)
+  deprecated preset-pipeline compatibility code kept only for old CLI and bridge entrypoints
 - [`src/repro_agent/openclaw_bridge.py`](src/repro_agent/openclaw_bridge.py)
   the stable OpenClaw/OpenClaw-facing bridge
 
@@ -106,7 +119,9 @@ The core implementation modules now live in categorized packages:
   external orchestration bridges such as OpenClaw
 
 The root-level `config.py`, `contracts.py`, `llm.py`, `runtime.py`, and
-`openclaw_bridge.py` are compatibility facades.
+`openclaw_bridge.py` are compatibility facades. The old preset-style pipeline
+now lives under `src/repro_agent/legacy/` and should be treated as a
+compatibility surface rather than the primary architecture path.
 
 The maintained execution scripts are:
 

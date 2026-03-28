@@ -13,7 +13,7 @@ The runtime contract remains:
 
 This document is a developer-facing reference layer for capability expansion.
 The machine-readable companion for that layer lives in
-[`../openclaw/skills/codex_skill_bridge.yaml`](../openclaw/skills/codex_skill_bridge.yaml),
+[`../../openclaw/skills/codex_skill_bridge.yaml`](../../openclaw/skills/codex_skill_bridge.yaml),
 which is now the project-owned bridge between vendored `.codex/skills` content
 and the OpenClaw stage model.
 
