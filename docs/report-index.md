@@ -6,6 +6,7 @@
 - [`architecture/clinical-analysis-capability-map.md`](architecture/clinical-analysis-capability-map.md)
 - [`architecture/openclaw-agent-guide-zh.md`](architecture/openclaw-agent-guide-zh.md)
 - [`operations/openclaw-mimic-automation-templates-2026-03-28.md`](operations/openclaw-mimic-automation-templates-2026-03-28.md)
+- [`operations/repro-acceptance-criteria-zh.md`](operations/repro-acceptance-criteria-zh.md)
 - [`reports/project-and-report-consolidation-2026-03-28.md`](reports/project-and-report-consolidation-2026-03-28.md)
 
 ## Paper Reproduction Alignment Reports

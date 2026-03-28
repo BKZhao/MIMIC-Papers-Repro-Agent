@@ -75,6 +75,7 @@ Operational template references:
 - [`docs/report-index.md`](docs/report-index.md)
 - [`docs/reports/project-and-report-consolidation-2026-03-28.md`](docs/reports/project-and-report-consolidation-2026-03-28.md)
 - [`docs/operations/openclaw-mimic-automation-templates-2026-03-28.md`](docs/operations/openclaw-mimic-automation-templates-2026-03-28.md)
+- [`docs/operations/repro-acceptance-criteria-zh.md`](docs/operations/repro-acceptance-criteria-zh.md)
 - [`configs/openclaw.request.stroke-tyg-agentic.example.json`](configs/openclaw.request.stroke-tyg-agentic.example.json)
 - [`configs/openclaw.request.arf-nomogram-agentic.example.json`](configs/openclaw.request.arf-nomogram-agentic.example.json)
 - [`configs/openclaw.request.trajectory-plan.example.json`](configs/openclaw.request.trajectory-plan.example.json)

@@ -116,6 +116,10 @@
 - 边界一致性:
   - 非 MIMIC 请求必须返回 unsupported 诊断
 
+详细验收口径（含 `blocked-not-failed`、阈值分级、提交前检查）见:
+
+- `docs/operations/repro-acceptance-criteria-zh.md`
+
 ## 6. 下一步建议（按优先级）
 
 1. 将 ARF 路线的队列口径先收敛到论文 N（再谈 AUC/C-index 收敛）
