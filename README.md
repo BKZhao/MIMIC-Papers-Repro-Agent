@@ -74,6 +74,7 @@ Operational template references:
 
 - [`docs/report-index.md`](docs/report-index.md)
 - [`docs/reports/project-and-report-consolidation-2026-03-28.md`](docs/reports/project-and-report-consolidation-2026-03-28.md)
+- [`docs/reports/project-full-rescan-zh-2026-03-30.md`](docs/reports/project-full-rescan-zh-2026-03-30.md)
 - [`docs/operations/openclaw-mimic-automation-templates-2026-03-28.md`](docs/operations/openclaw-mimic-automation-templates-2026-03-28.md)
 - [`docs/operations/repro-acceptance-criteria-zh.md`](docs/operations/repro-acceptance-criteria-zh.md)
 - [`configs/openclaw.request.stroke-tyg-agentic.example.json`](configs/openclaw.request.stroke-tyg-agentic.example.json)
@@ -244,6 +245,12 @@ cp .env.example .env
 pip install -e .
 ```
 
+Optional: install the dashboard extras:
+
+```bash
+pip install -e ".[dashboard]"
+```
+
 3. Validate database wiring:
 
 ```bash
@@ -256,6 +263,29 @@ paper-repro probe-db
 ```bash
 paper-repro probe-llm --config configs/agentic.example.yaml
 ```
+
+## Reproduction Dashboard
+
+This repository now includes a session-level visual dashboard for harness control:
+
+- async web job center (`Create Job -> Job List -> Job Detail`)
+- one-click paper submission (upload PDF or paper path)
+- in-page follow-up Q&A resume (`waiting_user_input -> queued -> running`)
+- session status / reproducibility verdict
+- stage gate threshold vs actual error
+- alignment iteration log
+- token usage summary
+- delivery artifact integrity check
+
+Run:
+
+```bash
+paper-repro-dashboard
+```
+
+See detailed guide:
+
+- [`docs/operations/repro-dashboard-quickstart-zh.md`](docs/operations/repro-dashboard-quickstart-zh.md)
 
 5. Inspect the OpenClaw bridge:
 
