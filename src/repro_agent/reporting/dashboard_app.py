@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import re
+import time
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -8,6 +10,8 @@ from typing import Any
 
 import pandas as pd
 import streamlit as st
+
+from ..integrations.openclaw import handle_openclaw_request
 
 
 @dataclass
@@ -341,21 +345,168 @@ def _render_session_summary(snapshot: SessionSnapshot) -> None:
     st.caption(f"Route Reason: {snapshot.route_reason or '-'}")
 
 
-def main() -> None:
-    st.set_page_config(page_title="MIMIC Repro Dashboard", page_icon="🧪", layout="wide")
-    st.title("🧪 MIMIC Reproduction Harness Dashboard")
-    st.caption("基于 session 工件的可视化控制台：阶段门禁、裁决、Token、交付产物")
+def _sanitize_filename(name: str) -> str:
+    text = re.sub(r"[^A-Za-z0-9._-]+", "_", str(name or "").strip())
+    text = text.strip("._")
+    return text or "paper.pdf"
 
-    default_root = _default_project_root()
-    root_input = st.sidebar.text_input("Project Root", value=str(default_root))
-    project_root = Path(root_input).expanduser().resolve()
 
-    session_dirs = _discover_session_dirs(project_root)
-    if not session_dirs:
-        st.error(f"未在 {project_root / 'shared/sessions'} 找到 session 目录。")
-        st.stop()
+def _save_uploaded_paper(*, project_root: Path, uploaded_file: Any) -> Path:
+    upload_dir = project_root / "papers" / "uploads"
+    upload_dir.mkdir(parents=True, exist_ok=True)
+    original_name = getattr(uploaded_file, "name", "paper.pdf")
+    safe_name = _sanitize_filename(original_name)
+    timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    out_path = upload_dir / f"{timestamp}-{safe_name}"
+    out_path.write_bytes(uploaded_file.getvalue())
+    return out_path
 
-    snapshots = [_load_session_snapshot(project_root, session_dir) for session_dir in session_dirs]
+
+def _build_response_artifact_dataframe(response: dict[str, Any]) -> pd.DataFrame:
+    artifacts = response.get("artifacts", [])
+    rows: list[dict[str, Any]] = []
+    if isinstance(artifacts, list):
+        for item in artifacts:
+            if not isinstance(item, dict):
+                continue
+            rows.append(
+                {
+                    "name": str(item.get("name", "")).strip(),
+                    "type": str(item.get("artifact_type", "")).strip(),
+                    "producer": str(item.get("producer", "")).strip(),
+                    "required": bool(item.get("required", False)),
+                    "rel_path": str(item.get("rel_path", "")).strip(),
+                }
+            )
+    if not rows:
+        return pd.DataFrame(columns=["name", "type", "producer", "required", "rel_path"])
+    return pd.DataFrame(rows)
+
+
+def _try_render_response_report(*, project_root: Path, response: dict[str, Any]) -> None:
+    session_id = str(response.get("session_id", "")).strip()
+    if not session_id:
+        return
+    report_path = project_root / "shared" / "sessions" / session_id / "workflow_stage_report.md"
+    if not report_path.exists():
+        return
+    markdown = _load_markdown(report_path)
+    if not markdown:
+        return
+    with st.expander("运行后生成的 Workflow Report", expanded=False):
+        st.markdown(markdown)
+
+
+def _render_run_new_paper_panel(project_root: Path) -> None:
+    st.subheader("Run New Paper")
+    st.caption("上传论文或输入论文路径，直接调用 Agent 执行，并返回状态与报告。")
+
+    default_config_path = "configs/openclaw.agentic.yaml"
+    with st.form("run_new_paper_form", clear_on_submit=False):
+        col_a, col_b = st.columns(2)
+        with col_a:
+            uploaded_file = st.file_uploader("上传论文 PDF", type=["pdf"])
+            paper_path_input = st.text_input("或使用仓库内论文路径", value="", placeholder="papers/your-paper.pdf")
+            instructions = st.text_area(
+                "运行说明（instructions）",
+                value=(
+                    "请严格按论文方法复现，输出阶段状态、门禁结果、对齐结论与报告。"
+                ),
+                height=110,
+            )
+        with col_b:
+            run_mode = st.selectbox(
+                "Run Mode",
+                options=["agentic_repro", "plan_only", "preset_real_run"],
+                index=0,
+            )
+            config_path = st.text_input("Config Path", value=default_config_path)
+            session_id = st.text_input("Session ID（可选）", value="")
+            use_llm = st.checkbox("Use LLM", value=True)
+            dry_run = st.checkbox("Dry Run", value=False)
+
+        submitted = st.form_submit_button("开始运行", type="primary")
+
+    response = st.session_state.get("last_openclaw_response", {})
+    last_request = st.session_state.get("last_openclaw_request", {})
+    if submitted:
+        effective_paper_path = str(paper_path_input).strip()
+        if uploaded_file is not None:
+            saved_path = _save_uploaded_paper(project_root=project_root, uploaded_file=uploaded_file)
+            try:
+                effective_paper_path = str(saved_path.relative_to(project_root))
+            except ValueError:
+                effective_paper_path = str(saved_path)
+
+        if not effective_paper_path:
+            st.error("请先上传论文 PDF，或填写 `paper_path`。")
+            return
+
+        request_payload: dict[str, Any] = {
+            "paper_path": effective_paper_path,
+            "instructions": instructions.strip(),
+            "run_mode": run_mode,
+            "config_path": config_path.strip() or default_config_path,
+            "use_llm": bool(use_llm),
+            "dry_run": bool(dry_run),
+        }
+        if str(session_id).strip():
+            request_payload["session_id"] = str(session_id).strip()
+
+        start_ts = time.perf_counter()
+        with st.spinner("Agent 正在执行，请稍候..."):
+            try:
+                response = handle_openclaw_request(project_root=project_root, request=request_payload)
+                elapsed = round(time.perf_counter() - start_ts, 3)
+                response["_dashboard_elapsed_seconds"] = elapsed
+                st.session_state["last_openclaw_response"] = response
+                st.session_state["last_openclaw_request"] = request_payload
+                st.success(f"运行完成，耗时 {elapsed}s")
+            except Exception as exc:  # pragma: no cover - interactive runtime path
+                st.session_state["last_openclaw_response"] = {}
+                st.session_state["last_openclaw_request"] = request_payload
+                st.error(f"运行失败：{exc}")
+                return
+
+    if response:
+        st.markdown("#### 最近一次运行结果")
+        top_cols = st.columns(5)
+        top_cols[0].metric("status", str(response.get("status", "-")))
+        top_cols[1].metric("session_id", str(response.get("session_id", "-")))
+        top_cols[2].metric("run_mode", str(response.get("run_profile_used", "-")))
+        execution = response.get("execution", {})
+        if isinstance(execution, dict):
+            top_cols[3].metric("execution.status", str(execution.get("status", "-")))
+        else:
+            top_cols[3].metric("execution.status", "-")
+        elapsed_value = _coerce_float(response.get("_dashboard_elapsed_seconds"))
+        top_cols[4].metric("elapsed (s)", "-" if elapsed_value is None else f"{elapsed_value:.3f}")
+
+        st.caption(
+            "request: "
+            + json.dumps(last_request, ensure_ascii=False)
+        )
+        verdict = response.get("reproducibility_verdict", {})
+        if isinstance(verdict, dict) and verdict:
+            st.markdown("#### Reproducibility Verdict")
+            st.json(verdict)
+
+        artifact_df = _build_response_artifact_dataframe(response)
+        if not artifact_df.empty:
+            st.markdown("#### Artifacts")
+            st.dataframe(artifact_df, use_container_width=True, hide_index=True)
+
+        with st.expander("Raw Response JSON", expanded=False):
+            st.json(response)
+
+        _try_render_response_report(project_root=project_root, response=response)
+
+
+def _render_session_explorer(project_root: Path, snapshots: list[SessionSnapshot]) -> None:
+    if not snapshots:
+        st.info("当前没有可展示的 session。你可以先在左侧“Run New Paper”里启动一次运行。")
+        return
+
     sessions_df = _build_sessions_dataframe(snapshots)
 
     status_options = sorted(item for item in sessions_df["status"].dropna().unique().tolist())
@@ -400,7 +551,7 @@ def main() -> None:
 
     if filtered_df.empty:
         st.warning("当前筛选条件下没有 session。")
-        st.stop()
+        return
 
     default_session_id = str(filtered_df.iloc[0]["session_id"])
     selected_session_id = st.sidebar.selectbox(
@@ -455,6 +606,26 @@ def main() -> None:
             st.markdown(markdown_text)
         else:
             st.info("未找到 workflow_stage_report.md。")
+
+
+def main() -> None:
+    st.set_page_config(page_title="MIMIC Repro Dashboard", page_icon="🧪", layout="wide")
+    st.title("🧪 MIMIC Reproduction Harness Dashboard")
+    st.caption("基于 session 工件的可视化控制台：阶段门禁、裁决、Token、交付产物")
+
+    default_root = _default_project_root()
+    root_input = st.sidebar.text_input("Project Root", value=str(default_root))
+    project_root = Path(root_input).expanduser().resolve()
+
+    tab_run, tab_explorer = st.tabs(["Run New Paper", "Session Explorer"])
+
+    with tab_run:
+        _render_run_new_paper_panel(project_root)
+
+    session_dirs = _discover_session_dirs(project_root)
+    snapshots = [_load_session_snapshot(project_root, session_dir) for session_dir in session_dirs]
+    with tab_explorer:
+        _render_session_explorer(project_root, snapshots)
 
 
 if __name__ == "__main__":

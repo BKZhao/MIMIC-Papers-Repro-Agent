@@ -36,6 +36,12 @@ paper-repro-dashboard --server.port 8510
 
 ## 4. 页面说明
 
+0. `Run New Paper`（新增）
+- 上传论文 PDF 或填写仓库内 `paper_path`
+- 填写 `instructions` 并选择 `run_mode`
+- 一键调用 Agent（底层走 `handle_openclaw_request`）
+- 直接返回 `status / session_id / verdict / artifacts / workflow report`
+
 1. `Session 总览`  
 显示每个 session 的状态、裁决、执行路线、迭代次数、误差与 token。
 
