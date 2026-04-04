@@ -56,6 +56,19 @@ paper-repro-dashboard --server.port 8510
 - 预览 `workflow_stage_report.md`
 - 常见工件提供下载按钮（`md/csv/json/zip/png/pdf/tex`）
 
+### 4.1.1 Create Job 字段速查
+
+| 字段 | 含义 | 何时使用 |
+|---|---|---|
+| 上传论文 PDF | 直接上传论文文件，系统自动保存并转成 `paper_path` | 论文文件在本机但不在仓库时 |
+| paper_path | 已在仓库内的论文路径 | 已提前放到 `papers/` 目录时 |
+| instructions | 对本次运行的额外要求 | 例如要求先输出纳排、再做统计 |
+| run_mode | 执行深度选择 | 常规用 `agentic_repro`，仅规划用 `plan_only` |
+| config_path | 运行配置文件路径 | 默认不改；仅在切配置策略时修改 |
+| session_id | 会话 ID | 新任务留空；续跑已有任务时填写 |
+| use_llm | 是否启用 LLM 读论文/抽证据 | 默认开启，除非做无 LLM 对照 |
+| dry_run | 仅校验流程，不做完整执行 | 首次调试参数时建议开启 |
+
 ### 4.2 Follow-up 页面内补答
 
 当任务返回 `task_not_ready + follow_up_questions` 时，任务会进入：

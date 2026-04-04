@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import re
+import sys
 import time
 from dataclasses import dataclass
 from datetime import datetime
@@ -11,19 +12,61 @@ from typing import Any
 import pandas as pd
 import streamlit as st
 
-from .job_runtime import (
-    JOB_STATUS_COMPLETED,
-    JOB_STATUS_FAILED,
-    JOB_STATUS_QUEUED,
-    JOB_STATUS_RUNNING,
-    JOB_STATUS_WAITING_USER_INPUT,
-    create_job,
-    get_job,
-    get_worker_state,
-    list_jobs,
-    resume_job_with_answers,
-    run_next_queued_job_async,
-)
+try:
+    from .job_runtime import (
+        JOB_STATUS_COMPLETED,
+        JOB_STATUS_FAILED,
+        JOB_STATUS_QUEUED,
+        JOB_STATUS_RUNNING,
+        JOB_STATUS_WAITING_USER_INPUT,
+        create_job,
+        get_job,
+        get_worker_state,
+        list_jobs,
+        resume_job_with_answers,
+        run_next_queued_job_async,
+    )
+except ImportError:  # pragma: no cover - script execution fallback
+    src_root = Path(__file__).resolve().parents[2]
+    src_root_text = str(src_root)
+    if src_root_text not in sys.path:
+        sys.path.insert(0, src_root_text)
+    from repro_agent.reporting.job_runtime import (
+        JOB_STATUS_COMPLETED,
+        JOB_STATUS_FAILED,
+        JOB_STATUS_QUEUED,
+        JOB_STATUS_RUNNING,
+        JOB_STATUS_WAITING_USER_INPUT,
+        create_job,
+        get_job,
+        get_worker_state,
+        list_jobs,
+        resume_job_with_answers,
+        run_next_queued_job_async,
+    )
+
+_RUN_MODE_META: dict[str, dict[str, str]] = {
+    "agentic_repro": {
+        "label": "完整复现（推荐）",
+        "desc": "自动串联 plan/continue/run，适合正式跑论文并拿完整状态与报告。",
+    },
+    "plan_only": {
+        "label": "仅规划",
+        "desc": "只做论文解析和任务规划，不执行 cohort/stats。",
+    },
+    "preset_real_run": {
+        "label": "预置快速执行",
+        "desc": "优先走 preset/profile 路线，适合已有预置的任务快速验证。",
+    },
+}
+
+_JOB_STATUS_META: dict[str, str] = {
+    JOB_STATUS_QUEUED: "排队中",
+    JOB_STATUS_RUNNING: "运行中",
+    JOB_STATUS_WAITING_USER_INPUT: "等待补答",
+    JOB_STATUS_COMPLETED: "已完成",
+    JOB_STATUS_FAILED: "失败",
+}
 
 
 @dataclass
@@ -378,6 +421,65 @@ _DOWNLOADABLE_SUFFIXES = {".md", ".csv", ".json", ".zip", ".png", ".pdf", ".tex"
 _JOB_ACTIVE_STATUSES = {JOB_STATUS_QUEUED, JOB_STATUS_RUNNING}
 
 
+def _run_mode_label(mode: str) -> str:
+    text = str(mode or "").strip()
+    meta = _RUN_MODE_META.get(text, {})
+    label = str(meta.get("label", "")).strip()
+    if not label:
+        return text
+    return f"{text} ｜ {label}"
+
+
+def _job_status_label(status: str) -> str:
+    text = str(status or "").strip()
+    mapped = _JOB_STATUS_META.get(text, "")
+    if not mapped:
+        return text or "unknown"
+    return f"{text} ｜ {mapped}"
+
+
+def _render_create_job_guide() -> None:
+    st.markdown("#### 使用引导")
+    g1, g2, g3 = st.columns(3)
+    g1.info("第 1 步：上传 PDF 或填写 `paper_path`。二选一即可。")
+    g2.info("第 2 步：选择 `run_mode`。首次建议用 `agentic_repro`。")
+    g3.info("第 3 步：点击“创建任务并开始”，到下方 `Job Detail` 看状态与报告。")
+
+    with st.expander("字段与选项说明（首次使用建议展开）", expanded=False):
+        st.markdown(
+            "\n".join(
+                [
+                    "- `上传论文 PDF`：最直观的入口，系统会自动保存到仓库 `papers/uploads/`。",
+                    "- `paper_path`：如果论文已在仓库中，可直接填相对路径，如 `papers/xxx.pdf`。",
+                    "- `instructions`：补充你的复现要求，例如“优先输出 cohort 纳排和对齐表”。",
+                    "- `run_mode`：控制执行深度。",
+                    "  - `agentic_repro`：完整链路（推荐）。",
+                    "  - `plan_only`：仅规划，不执行统计。",
+                    "  - `preset_real_run`：优先用预置流程快速执行。",
+                    "- `config_path`：配置文件路径，默认 `configs/openclaw.agentic.yaml`。",
+                    "- `session_id`：可选。留空会自动生成；填写可续接已有会话。",
+                    "- `use_llm`：是否启用 LLM 做论文证据抽取与合同构建。",
+                    "- `dry_run`：仅验证流程和参数，不做真实重计算。",
+                ]
+            )
+        )
+
+
+def _render_job_status_legend() -> None:
+    with st.expander("任务状态说明", expanded=False):
+        st.markdown(
+            "\n".join(
+                [
+                    "- `queued`：任务已创建，等待 worker 执行。",
+                    "- `running`：后台正在执行。",
+                    "- `waiting_user_input`：需要你补答 follow-up 问题后继续。",
+                    "- `completed`：任务完成，可查看报告和下载产物。",
+                    "- `failed`：执行失败，可在 Job Detail 查看错误信息。",
+                ]
+            )
+        )
+
+
 def _build_job_artifact_dataframe(*, project_root: Path, artifacts: Any) -> pd.DataFrame:
     rows: list[dict[str, Any]] = []
     if not isinstance(artifacts, list):
@@ -424,9 +526,11 @@ def _build_jobs_dataframe(jobs: list[dict[str, Any]]) -> pd.DataFrame:
             {
                 "job_id": str(job.get("job_id", "")).strip(),
                 "status": str(job.get("status", "")).strip(),
+                "status_label": _job_status_label(str(job.get("status", "")).strip()),
                 "progress_stage": str(job.get("progress_stage", "")).strip(),
                 "session_id": str(job.get("session_id", "")).strip(),
                 "run_mode": run_mode,
+                "run_mode_label": _run_mode_label(run_mode),
                 "execution_status": execution_status,
                 "updated_at": str(job.get("updated_at", "")).strip(),
                 "elapsed_seconds": _coerce_float(job.get("elapsed_seconds")),
@@ -437,9 +541,11 @@ def _build_jobs_dataframe(jobs: list[dict[str, Any]]) -> pd.DataFrame:
             columns=[
                 "job_id",
                 "status",
+                "status_label",
                 "progress_stage",
                 "session_id",
                 "run_mode",
+                "run_mode_label",
                 "execution_status",
                 "updated_at",
                 "elapsed_seconds",
@@ -559,11 +665,12 @@ def _render_job_detail(*, project_root: Path, job: dict[str, Any]) -> None:
     execution = response.get("execution", {})
     execution_status = str(execution.get("status", "-")).strip() if isinstance(execution, dict) else "-"
     run_mode = str(payload.get("run_mode", "-")).strip() or "-"
+    status = str(job.get("status", "-")).strip()
 
     top_cols = st.columns(5)
-    top_cols[0].metric("status", str(job.get("status", "-")))
+    top_cols[0].metric("status", _job_status_label(status))
     top_cols[1].metric("session_id", str(job.get("session_id", "-")))
-    top_cols[2].metric("run_mode", run_mode)
+    top_cols[2].metric("run_mode", _run_mode_label(run_mode))
     top_cols[3].metric("execution.status", execution_status or "-")
     elapsed = _coerce_float(job.get("elapsed_seconds"))
     top_cols[4].metric("elapsed (s)", "-" if elapsed is None else f"{elapsed:.3f}")
@@ -622,12 +729,13 @@ def _render_run_new_paper_panel(project_root: Path) -> None:
     worker_state = get_worker_state()
 
     st.subheader("Run New Paper · Job Center")
-    st.caption("输入论文后创建异步任务，页面自动展示状态、裁决、阶段报告与可下载工件。")
+    st.caption("输入论文后创建异步任务，页面会自动展示任务状态、裁决、阶段报告与可下载工件。")
     st.caption(
         "Worker: "
         + ("running" if worker_state.get("running") else "idle")
         + f" | active_job_id: {str(worker_state.get('active_job_id', '') or '-')}"
     )
+    _render_create_job_guide()
 
     default_config_path = "configs/openclaw.agentic.yaml"
     with st.container():
@@ -635,23 +743,51 @@ def _render_run_new_paper_panel(project_root: Path) -> None:
         with st.form("run_new_paper_job_form", clear_on_submit=False):
             col_a, col_b = st.columns(2)
             with col_a:
-                uploaded_file = st.file_uploader("上传论文 PDF", type=["pdf"])
-                paper_path_input = st.text_input("或使用仓库内论文路径", value="", placeholder="papers/your-paper.pdf")
+                uploaded_file = st.file_uploader(
+                    "上传论文 PDF",
+                    type=["pdf"],
+                    help="直接上传论文文件。上传后会自动保存到 `papers/uploads/` 并作为 paper_path 使用。",
+                )
+                paper_path_input = st.text_input(
+                    "或使用仓库内论文路径",
+                    value="",
+                    placeholder="papers/your-paper.pdf",
+                    help="当论文已经在仓库里时使用，例如 `papers/s40001-026-03994-w.pdf`。",
+                )
                 instructions = st.text_area(
                     "运行说明（instructions）",
                     value="请严格按论文方法复现，输出阶段状态、门禁结果、对齐结论与报告。",
                     height=110,
+                    help="告诉 Agent 你的偏好，例如“先给 cohort 纳排，再继续统计建模”。",
                 )
             with col_b:
                 run_mode = st.selectbox(
                     "Run Mode",
                     options=["agentic_repro", "plan_only", "preset_real_run"],
                     index=0,
+                    format_func=_run_mode_label,
+                    help="控制执行深度：完整复现 / 仅规划 / 预置快速执行。",
                 )
-                config_path = st.text_input("Config Path", value=default_config_path)
-                session_id = st.text_input("Session ID（可选）", value="")
-                use_llm = st.checkbox("Use LLM", value=True)
-                dry_run = st.checkbox("Dry Run", value=False)
+                config_path = st.text_input(
+                    "Config Path",
+                    value=default_config_path,
+                    help="运行配置文件路径。默认配置对大多数任务可直接使用。",
+                )
+                session_id = st.text_input(
+                    "Session ID（可选）",
+                    value="",
+                    help="留空自动创建新 session。填写已有 session_id 可继续同一会话。",
+                )
+                use_llm = st.checkbox(
+                    "Use LLM",
+                    value=True,
+                    help="开启后会使用 LLM 进行论文证据抽取与合同构建。",
+                )
+                dry_run = st.checkbox(
+                    "Dry Run",
+                    value=False,
+                    help="只走流程校验，不做完整执行。适合先验证配置是否正确。",
+                )
             submitted = st.form_submit_button("创建任务并开始", type="primary")
 
         if submitted:
@@ -688,6 +824,7 @@ def _render_run_new_paper_panel(project_root: Path) -> None:
 
     with st.container():
         st.markdown("#### Job List")
+        _render_job_status_legend()
         filter_col, refresh_col, auto_col = st.columns([2, 1, 1])
         with filter_col:
             status_filter = st.selectbox(
@@ -706,7 +843,20 @@ def _render_run_new_paper_panel(project_root: Path) -> None:
             status_filter="" if status_filter == "all" else status_filter,
         )
         jobs_df = _build_jobs_dataframe(jobs)
-        st.dataframe(jobs_df, use_container_width=True, hide_index=True)
+        jobs_display_df = jobs_df.rename(
+            columns={
+                "job_id": "Job ID",
+                "status_label": "状态",
+                "progress_stage": "阶段",
+                "session_id": "Session",
+                "run_mode_label": "Run Mode",
+                "execution_status": "执行状态",
+                "updated_at": "更新时间",
+                "elapsed_seconds": "耗时(秒)",
+            }
+        )
+        selected_columns = ["Job ID", "状态", "阶段", "Session", "Run Mode", "执行状态", "更新时间", "耗时(秒)"]
+        st.dataframe(jobs_display_df[selected_columns], use_container_width=True, hide_index=True)
 
         selected_job_id = str(st.session_state.get("dashboard_selected_job_id", "")).strip()
         job_ids = [str(item.get("job_id", "")).strip() for item in jobs if str(item.get("job_id", "")).strip()]
@@ -845,9 +995,32 @@ def _render_session_explorer(project_root: Path, snapshots: list[SessionSnapshot
             st.info("未找到 workflow_stage_report.md。")
 
 
+def _inject_dashboard_styles() -> None:
+    st.markdown(
+        """
+<style>
+div[data-testid="stMetric"] {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 10px 12px;
+}
+div[data-testid="stMetricLabel"] > div {
+  font-weight: 600;
+}
+div[data-testid="stExpander"] summary p {
+  font-weight: 600;
+}
+</style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
 def main() -> None:
-    st.set_page_config(page_title="MIMIC Repro Dashboard", page_icon="🧪", layout="wide")
-    st.title("🧪 MIMIC Reproduction Harness Dashboard")
+    st.set_page_config(page_title="MIMIC Repro Dashboard", layout="wide")
+    _inject_dashboard_styles()
+    st.title("MIMIC Reproduction Harness Dashboard")
     st.caption("基于 session 工件的可视化控制台：阶段门禁、裁决、Token、交付产物")
 
     default_root = _default_project_root()
