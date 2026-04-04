@@ -24,6 +24,12 @@ dependencies = [
 
 [project.scripts]
 paper-repro = "repro_agent.cli:main"
+paper-repro-dashboard = "repro_agent.reporting.dashboard_launcher:main"
+
+[project.optional-dependencies]
+dashboard = [
+  "streamlit>=1.37.0",
+]
 
 [tool.setuptools]
 package-dir = {"" = "src"}
