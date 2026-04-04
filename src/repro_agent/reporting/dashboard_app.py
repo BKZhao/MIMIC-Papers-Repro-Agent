@@ -11,7 +11,19 @@ from typing import Any
 import pandas as pd
 import streamlit as st
 
-from ..integrations.openclaw import handle_openclaw_request
+from .job_runtime import (
+    JOB_STATUS_COMPLETED,
+    JOB_STATUS_FAILED,
+    JOB_STATUS_QUEUED,
+    JOB_STATUS_RUNNING,
+    JOB_STATUS_WAITING_USER_INPUT,
+    create_job,
+    get_job,
+    get_worker_state,
+    list_jobs,
+    resume_job_with_answers,
+    run_next_queued_job_async,
+)
 
 
 @dataclass
@@ -362,144 +374,369 @@ def _save_uploaded_paper(*, project_root: Path, uploaded_file: Any) -> Path:
     return out_path
 
 
-def _build_response_artifact_dataframe(response: dict[str, Any]) -> pd.DataFrame:
-    artifacts = response.get("artifacts", [])
+_DOWNLOADABLE_SUFFIXES = {".md", ".csv", ".json", ".zip", ".png", ".pdf", ".tex"}
+_JOB_ACTIVE_STATUSES = {JOB_STATUS_QUEUED, JOB_STATUS_RUNNING}
+
+
+def _build_job_artifact_dataframe(*, project_root: Path, artifacts: Any) -> pd.DataFrame:
     rows: list[dict[str, Any]] = []
-    if isinstance(artifacts, list):
-        for item in artifacts:
-            if not isinstance(item, dict):
-                continue
-            rows.append(
-                {
-                    "name": str(item.get("name", "")).strip(),
-                    "type": str(item.get("artifact_type", "")).strip(),
-                    "producer": str(item.get("producer", "")).strip(),
-                    "required": bool(item.get("required", False)),
-                    "rel_path": str(item.get("rel_path", "")).strip(),
-                }
-            )
+    if not isinstance(artifacts, list):
+        return pd.DataFrame(columns=["name", "type", "producer", "required", "rel_path", "exists", "size_bytes"])
+
+    for item in artifacts:
+        if not isinstance(item, dict):
+            continue
+        rel_path = str(item.get("rel_path", "")).strip()
+        abs_path = project_root / rel_path if rel_path else None
+        exists = bool(abs_path and abs_path.exists())
+        size_bytes = abs_path.stat().st_size if exists and abs_path else None
+        rows.append(
+            {
+                "name": str(item.get("name", "")).strip(),
+                "type": str(item.get("artifact_type", "")).strip(),
+                "producer": str(item.get("producer", "")).strip(),
+                "required": bool(item.get("required", False)),
+                "rel_path": rel_path,
+                "exists": exists,
+                "size_bytes": size_bytes,
+            }
+        )
     if not rows:
-        return pd.DataFrame(columns=["name", "type", "producer", "required", "rel_path"])
+        return pd.DataFrame(columns=["name", "type", "producer", "required", "rel_path", "exists", "size_bytes"])
     return pd.DataFrame(rows)
 
 
-def _try_render_response_report(*, project_root: Path, response: dict[str, Any]) -> None:
-    session_id = str(response.get("session_id", "")).strip()
-    if not session_id:
+def _build_jobs_dataframe(jobs: list[dict[str, Any]]) -> pd.DataFrame:
+    rows: list[dict[str, Any]] = []
+    for job in jobs:
+        payload = job.get("request_payload", {})
+        if not isinstance(payload, dict):
+            payload = {}
+        run_mode = str(payload.get("run_mode", "")).strip()
+        response = job.get("last_response", {})
+        if not isinstance(response, dict):
+            response = {}
+        execution = response.get("execution", {})
+        execution_status = ""
+        if isinstance(execution, dict):
+            execution_status = str(execution.get("status", "")).strip()
+        rows.append(
+            {
+                "job_id": str(job.get("job_id", "")).strip(),
+                "status": str(job.get("status", "")).strip(),
+                "progress_stage": str(job.get("progress_stage", "")).strip(),
+                "session_id": str(job.get("session_id", "")).strip(),
+                "run_mode": run_mode,
+                "execution_status": execution_status,
+                "updated_at": str(job.get("updated_at", "")).strip(),
+                "elapsed_seconds": _coerce_float(job.get("elapsed_seconds")),
+            }
+        )
+    if not rows:
+        return pd.DataFrame(
+            columns=[
+                "job_id",
+                "status",
+                "progress_stage",
+                "session_id",
+                "run_mode",
+                "execution_status",
+                "updated_at",
+                "elapsed_seconds",
+            ]
+        )
+    return pd.DataFrame(rows)
+
+
+def _resolve_report_path_from_job(project_root: Path, job: dict[str, Any]) -> Path | None:
+    rel = str(job.get("workflow_report_path", "")).strip()
+    if rel:
+        candidate = project_root / rel
+        if candidate.exists():
+            return candidate
+    session_id = str(job.get("session_id", "")).strip()
+    if session_id:
+        fallback = project_root / "shared" / "sessions" / session_id / "workflow_stage_report.md"
+        if fallback.exists():
+            return fallback
+    return None
+
+
+def _render_job_downloads(*, project_root: Path, artifact_df: pd.DataFrame, job_id: str) -> None:
+    if artifact_df.empty:
+        st.info("当前任务还没有可下载工件。")
         return
-    report_path = project_root / "shared" / "sessions" / session_id / "workflow_stage_report.md"
-    if not report_path.exists():
+    st.markdown("#### Download Artifacts")
+    rendered = 0
+    for idx, row in artifact_df.iterrows():
+        rel_path = str(row.get("rel_path", "")).strip()
+        if not rel_path:
+            continue
+        abs_path = project_root / rel_path
+        if not abs_path.exists():
+            continue
+        suffix = abs_path.suffix.lower()
+        if suffix not in _DOWNLOADABLE_SUFFIXES:
+            continue
+        try:
+            data = abs_path.read_bytes()
+        except OSError:
+            continue
+        label = f"Download {abs_path.name}"
+        st.download_button(
+            label=label,
+            data=data,
+            file_name=abs_path.name,
+            key=f"download_{job_id}_{idx}",
+        )
+        rendered += 1
+    if rendered == 0:
+        st.info("当前工件暂不在可下载类型范围（md/csv/json/zip/png/pdf/tex）内。")
+
+
+def _render_follow_up_form(*, project_root: Path, job: dict[str, Any]) -> None:
+    job_id = str(job.get("job_id", "")).strip()
+    follow_up_questions = job.get("follow_up_questions", [])
+    if not isinstance(follow_up_questions, list) or not follow_up_questions:
+        st.info("任务需要补充信息，但未提供结构化 follow-up 问题。")
         return
-    markdown = _load_markdown(report_path)
-    if not markdown:
+
+    st.markdown("#### Follow-up Questions")
+    st.caption("请补齐下面问题后继续执行。提交后任务会自动重新入队。")
+
+    with st.form(f"follow_up_form_{job_id}", clear_on_submit=False):
+        answers: dict[str, str] = {}
+        missing_required: list[str] = []
+        for idx, item in enumerate(follow_up_questions):
+            if not isinstance(item, dict):
+                continue
+            field = str(item.get("field", "")).strip() or f"field_{idx+1}"
+            question = str(item.get("question", "")).strip() or field
+            rationale = str(item.get("rationale", "")).strip()
+            required = bool(item.get("required", True))
+            label = f"{idx+1}. {question}"
+            user_input = st.text_area(
+                label,
+                value="",
+                height=90,
+                key=f"follow_up_{job_id}_{field}_{idx}",
+                help=rationale or None,
+            )
+            cleaned = user_input.strip()
+            if cleaned:
+                answers[field] = cleaned
+            elif required:
+                missing_required.append(field)
+        submitted = st.form_submit_button("提交补答并继续运行", type="primary")
+
+    if not submitted:
         return
-    with st.expander("运行后生成的 Workflow Report", expanded=False):
-        st.markdown(markdown)
+    if missing_required:
+        st.error("以下必填字段还未填写：" + ", ".join(missing_required))
+        return
+    if not answers:
+        st.error("请至少填写一个 follow-up 字段后再提交。")
+        return
+
+    try:
+        resume_job_with_answers(project_root=project_root, job_id=job_id, answers=answers)
+        run_next_queued_job_async(project_root)
+        st.success("补答已提交，任务已重新入队。")
+        time.sleep(0.6)
+        st.rerun()
+    except Exception as exc:  # pragma: no cover - interactive runtime path
+        st.error(f"继续任务失败：{exc}")
+
+
+def _render_job_detail(*, project_root: Path, job: dict[str, Any]) -> None:
+    payload = job.get("request_payload", {})
+    if not isinstance(payload, dict):
+        payload = {}
+    response = job.get("last_response", {})
+    if not isinstance(response, dict):
+        response = {}
+
+    execution = response.get("execution", {})
+    execution_status = str(execution.get("status", "-")).strip() if isinstance(execution, dict) else "-"
+    run_mode = str(payload.get("run_mode", "-")).strip() or "-"
+
+    top_cols = st.columns(5)
+    top_cols[0].metric("status", str(job.get("status", "-")))
+    top_cols[1].metric("session_id", str(job.get("session_id", "-")))
+    top_cols[2].metric("run_mode", run_mode)
+    top_cols[3].metric("execution.status", execution_status or "-")
+    elapsed = _coerce_float(job.get("elapsed_seconds"))
+    top_cols[4].metric("elapsed (s)", "-" if elapsed is None else f"{elapsed:.3f}")
+
+    st.caption("request: " + json.dumps(payload, ensure_ascii=False))
+    error_text = str(job.get("error", "")).strip()
+    if error_text:
+        st.error(error_text)
+
+    verdict = job.get("reproducibility_verdict", {})
+    if isinstance(verdict, dict) and verdict:
+        st.markdown("#### Reproducibility Verdict")
+        st.json(verdict)
+
+    if str(job.get("status", "")).strip() == JOB_STATUS_WAITING_USER_INPUT:
+        _render_follow_up_form(project_root=project_root, job=job)
+
+    artifact_df = _build_job_artifact_dataframe(project_root=project_root, artifacts=job.get("artifacts", []))
+    st.markdown("#### Artifacts")
+    st.dataframe(artifact_df, use_container_width=True, hide_index=True)
+
+    if not artifact_df.empty:
+        missing_required = artifact_df[(artifact_df["required"] == True) & (artifact_df["exists"] == False)]  # noqa: E712
+        if not missing_required.empty:
+            st.warning("以下 required artifacts 当前缺失：")
+            st.dataframe(missing_required, use_container_width=True, hide_index=True)
+    _render_job_downloads(project_root=project_root, artifact_df=artifact_df, job_id=str(job.get("job_id", "")))
+
+    report_path = _resolve_report_path_from_job(project_root, job)
+    st.markdown("#### Workflow Stage Report")
+    if report_path and report_path.exists():
+        markdown = _load_markdown(report_path)
+        if markdown:
+            st.markdown(markdown)
+            try:
+                report_bytes = report_path.read_bytes()
+                st.download_button(
+                    "Download workflow_stage_report.md",
+                    data=report_bytes,
+                    file_name=report_path.name,
+                    key=f"download_report_{job.get('job_id', '')}",
+                )
+            except OSError:
+                st.info("Workflow report 可预览，但下载读取失败。")
+        else:
+            st.info("workflow_stage_report.md 存在，但内容为空。")
+    else:
+        st.info("当前任务尚未生成 workflow_stage_report.md。")
+
+    with st.expander("Raw Job JSON", expanded=False):
+        st.json(job)
 
 
 def _render_run_new_paper_panel(project_root: Path) -> None:
-    st.subheader("Run New Paper")
-    st.caption("上传论文或输入论文路径，直接调用 Agent 执行，并返回状态与报告。")
+    run_next_queued_job_async(project_root, max_workers=1)
+    worker_state = get_worker_state()
+
+    st.subheader("Run New Paper · Job Center")
+    st.caption("输入论文后创建异步任务，页面自动展示状态、裁决、阶段报告与可下载工件。")
+    st.caption(
+        "Worker: "
+        + ("running" if worker_state.get("running") else "idle")
+        + f" | active_job_id: {str(worker_state.get('active_job_id', '') or '-')}"
+    )
 
     default_config_path = "configs/openclaw.agentic.yaml"
-    with st.form("run_new_paper_form", clear_on_submit=False):
-        col_a, col_b = st.columns(2)
-        with col_a:
-            uploaded_file = st.file_uploader("上传论文 PDF", type=["pdf"])
-            paper_path_input = st.text_input("或使用仓库内论文路径", value="", placeholder="papers/your-paper.pdf")
-            instructions = st.text_area(
-                "运行说明（instructions）",
-                value=(
-                    "请严格按论文方法复现，输出阶段状态、门禁结果、对齐结论与报告。"
-                ),
-                height=110,
-            )
-        with col_b:
-            run_mode = st.selectbox(
-                "Run Mode",
-                options=["agentic_repro", "plan_only", "preset_real_run"],
-                index=0,
-            )
-            config_path = st.text_input("Config Path", value=default_config_path)
-            session_id = st.text_input("Session ID（可选）", value="")
-            use_llm = st.checkbox("Use LLM", value=True)
-            dry_run = st.checkbox("Dry Run", value=False)
+    with st.container():
+        st.markdown("#### Create Job")
+        with st.form("run_new_paper_job_form", clear_on_submit=False):
+            col_a, col_b = st.columns(2)
+            with col_a:
+                uploaded_file = st.file_uploader("上传论文 PDF", type=["pdf"])
+                paper_path_input = st.text_input("或使用仓库内论文路径", value="", placeholder="papers/your-paper.pdf")
+                instructions = st.text_area(
+                    "运行说明（instructions）",
+                    value="请严格按论文方法复现，输出阶段状态、门禁结果、对齐结论与报告。",
+                    height=110,
+                )
+            with col_b:
+                run_mode = st.selectbox(
+                    "Run Mode",
+                    options=["agentic_repro", "plan_only", "preset_real_run"],
+                    index=0,
+                )
+                config_path = st.text_input("Config Path", value=default_config_path)
+                session_id = st.text_input("Session ID（可选）", value="")
+                use_llm = st.checkbox("Use LLM", value=True)
+                dry_run = st.checkbox("Dry Run", value=False)
+            submitted = st.form_submit_button("创建任务并开始", type="primary")
 
-        submitted = st.form_submit_button("开始运行", type="primary")
-
-    response = st.session_state.get("last_openclaw_response", {})
-    last_request = st.session_state.get("last_openclaw_request", {})
-    if submitted:
-        effective_paper_path = str(paper_path_input).strip()
-        if uploaded_file is not None:
-            saved_path = _save_uploaded_paper(project_root=project_root, uploaded_file=uploaded_file)
-            try:
-                effective_paper_path = str(saved_path.relative_to(project_root))
-            except ValueError:
-                effective_paper_path = str(saved_path)
-
-        if not effective_paper_path:
-            st.error("请先上传论文 PDF，或填写 `paper_path`。")
-            return
-
-        request_payload: dict[str, Any] = {
-            "paper_path": effective_paper_path,
-            "instructions": instructions.strip(),
-            "run_mode": run_mode,
-            "config_path": config_path.strip() or default_config_path,
-            "use_llm": bool(use_llm),
-            "dry_run": bool(dry_run),
-        }
-        if str(session_id).strip():
-            request_payload["session_id"] = str(session_id).strip()
-
-        start_ts = time.perf_counter()
-        with st.spinner("Agent 正在执行，请稍候..."):
-            try:
-                response = handle_openclaw_request(project_root=project_root, request=request_payload)
-                elapsed = round(time.perf_counter() - start_ts, 3)
-                response["_dashboard_elapsed_seconds"] = elapsed
-                st.session_state["last_openclaw_response"] = response
-                st.session_state["last_openclaw_request"] = request_payload
-                st.success(f"运行完成，耗时 {elapsed}s")
-            except Exception as exc:  # pragma: no cover - interactive runtime path
-                st.session_state["last_openclaw_response"] = {}
-                st.session_state["last_openclaw_request"] = request_payload
-                st.error(f"运行失败：{exc}")
+        if submitted:
+            effective_paper_path = str(paper_path_input).strip()
+            if uploaded_file is not None:
+                saved_path = _save_uploaded_paper(project_root=project_root, uploaded_file=uploaded_file)
+                try:
+                    effective_paper_path = str(saved_path.relative_to(project_root))
+                except ValueError:
+                    effective_paper_path = str(saved_path)
+            if not effective_paper_path:
+                st.error("请先上传论文 PDF，或填写 `paper_path`。")
                 return
 
-    if response:
-        st.markdown("#### 最近一次运行结果")
-        top_cols = st.columns(5)
-        top_cols[0].metric("status", str(response.get("status", "-")))
-        top_cols[1].metric("session_id", str(response.get("session_id", "-")))
-        top_cols[2].metric("run_mode", str(response.get("run_profile_used", "-")))
-        execution = response.get("execution", {})
-        if isinstance(execution, dict):
-            top_cols[3].metric("execution.status", str(execution.get("status", "-")))
-        else:
-            top_cols[3].metric("execution.status", "-")
-        elapsed_value = _coerce_float(response.get("_dashboard_elapsed_seconds"))
-        top_cols[4].metric("elapsed (s)", "-" if elapsed_value is None else f"{elapsed_value:.3f}")
+            request_payload: dict[str, Any] = {
+                "paper_path": effective_paper_path,
+                "instructions": instructions.strip(),
+                "run_mode": run_mode,
+                "config_path": config_path.strip() or default_config_path,
+                "use_llm": bool(use_llm),
+                "dry_run": bool(dry_run),
+            }
+            if str(session_id).strip():
+                request_payload["session_id"] = str(session_id).strip()
 
-        st.caption(
-            "request: "
-            + json.dumps(last_request, ensure_ascii=False)
+            try:
+                job_id = create_job(project_root=project_root, request_payload=request_payload)
+                st.session_state["dashboard_selected_job_id"] = job_id
+                run_next_queued_job_async(project_root)
+                st.success(f"任务已创建：{job_id}")
+            except Exception as exc:  # pragma: no cover - interactive runtime path
+                st.error(f"创建任务失败：{exc}")
+                return
+
+    with st.container():
+        st.markdown("#### Job List")
+        filter_col, refresh_col, auto_col = st.columns([2, 1, 1])
+        with filter_col:
+            status_filter = st.selectbox(
+                "状态筛选",
+                options=["all", JOB_STATUS_QUEUED, JOB_STATUS_RUNNING, JOB_STATUS_WAITING_USER_INPUT, JOB_STATUS_COMPLETED, JOB_STATUS_FAILED],
+                index=0,
+            )
+        with refresh_col:
+            manual_refresh = st.button("手动刷新", use_container_width=True)
+        with auto_col:
+            auto_refresh = st.checkbox("运行中自动刷新", value=True)
+
+        jobs = list_jobs(
+            project_root=project_root,
+            limit=200,
+            status_filter="" if status_filter == "all" else status_filter,
         )
-        verdict = response.get("reproducibility_verdict", {})
-        if isinstance(verdict, dict) and verdict:
-            st.markdown("#### Reproducibility Verdict")
-            st.json(verdict)
+        jobs_df = _build_jobs_dataframe(jobs)
+        st.dataframe(jobs_df, use_container_width=True, hide_index=True)
 
-        artifact_df = _build_response_artifact_dataframe(response)
-        if not artifact_df.empty:
-            st.markdown("#### Artifacts")
-            st.dataframe(artifact_df, use_container_width=True, hide_index=True)
+        selected_job_id = str(st.session_state.get("dashboard_selected_job_id", "")).strip()
+        job_ids = [str(item.get("job_id", "")).strip() for item in jobs if str(item.get("job_id", "")).strip()]
+        if not selected_job_id and job_ids:
+            selected_job_id = job_ids[0]
+        if job_ids:
+            default_index = job_ids.index(selected_job_id) if selected_job_id in job_ids else 0
+            selected_job_id = st.selectbox("查看任务详情", options=job_ids, index=default_index)
+            st.session_state["dashboard_selected_job_id"] = selected_job_id
+        else:
+            st.info("当前没有任务。请先创建一个 job。")
+            selected_job_id = ""
 
-        with st.expander("Raw Response JSON", expanded=False):
-            st.json(response)
+    with st.container():
+        st.markdown("#### Job Detail")
+        if not selected_job_id:
+            st.info("暂无可查看的任务。")
+            return
+        try:
+            job = get_job(project_root=project_root, job_id=selected_job_id)
+        except Exception as exc:  # pragma: no cover - interactive runtime path
+            st.error(f"读取任务失败：{exc}")
+            return
+        _render_job_detail(project_root=project_root, job=job)
 
-        _try_render_response_report(project_root=project_root, response=response)
+    if manual_refresh:
+        st.rerun()
+    if auto_refresh and str(job.get("status", "")).strip() in _JOB_ACTIVE_STATUSES:
+        time.sleep(2.5)
+        st.rerun()
 
 
 def _render_session_explorer(project_root: Path, snapshots: list[SessionSnapshot]) -> None:

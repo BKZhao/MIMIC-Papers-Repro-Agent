@@ -34,13 +34,43 @@ paper-repro-dashboard
 paper-repro-dashboard --server.port 8510
 ```
 
-## 4. 页面说明
+## 4. 页面说明（异步任务模式）
 
-0. `Run New Paper`（新增）
+### 4.1 Run New Paper · Job Center
+
+页面升级为“任务中心”，分三块：
+
+1. `Create Job`
 - 上传论文 PDF 或填写仓库内 `paper_path`
-- 填写 `instructions` 并选择 `run_mode`
-- 一键调用 Agent（底层走 `handle_openclaw_request`）
-- 直接返回 `status / session_id / verdict / artifacts / workflow report`
+- 配置 `instructions / run_mode / config_path`
+- 点击“创建任务并开始”后立即返回 `job_id`（不阻塞页面）
+
+2. `Job List`
+- 展示最近任务：`job_id / status / progress_stage / session_id / run_mode / execution_status / elapsed`
+- 支持状态筛选、手动刷新
+- 运行中可自动刷新（2-3 秒）
+
+3. `Job Detail`
+- 显示任务状态、会话 ID、执行状态、耗时、裁决对象
+- 展示 artifacts 表（含 required 与存在性）
+- 预览 `workflow_stage_report.md`
+- 常见工件提供下载按钮（`md/csv/json/zip/png/pdf/tex`）
+
+### 4.2 Follow-up 页面内补答
+
+当任务返回 `task_not_ready + follow_up_questions` 时，任务会进入：
+
+- `waiting_user_input`
+
+此时 `Job Detail` 会自动渲染动态表单。用户补答后点击提交，系统会：
+
+- 复用原 `job_id + session_id`
+- 将答案写入任务历史
+- 自动重新入队并继续执行
+
+### 4.3 Session Explorer（历史审计视图）
+
+保留原有 Session Explorer，继续用于审计和回看：
 
 1. `Session 总览`  
 显示每个 session 的状态、裁决、执行路线、迭代次数、误差与 token。
@@ -66,10 +96,23 @@ Dashboard 默认读取当前仓库根目录，核心路径：
 
 - `shared/sessions/*`
 - `results/sessions/*`
+- `shared/web_jobs/*.json`（异步任务状态持久化）
 
 可在左侧 `Project Root` 输入框切换到其他仓库副本。
 
-## 6. 常见问题
+## 6. 任务生命周期（简版）
+
+```text
+queued
+  -> running
+  -> waiting_user_input (需要 follow-up 补答)
+      -> queued -> running
+  -> completed
+  -> failed
+  -> cancelled (预留)
+```
+
+## 7. 常见问题
 
 1. 报错 `Streamlit is not installed`  
 请执行 `pip install -e ".[dashboard]"`。
@@ -79,3 +122,12 @@ Dashboard 默认读取当前仓库根目录，核心路径：
 
 3. Token 显示为空  
 确认是否生成 `results/sessions/<session_id>/llm_token_usage_summary.json`。
+
+4. 任务长时间停在 `queued`  
+确认页面右上方 worker 状态是否为 `running/idle`；若长期 idle，点击“手动刷新”触发下一次调度。
+
+5. 某个 job JSON 损坏或手工改坏  
+删除 `shared/web_jobs/<job_id>.json` 后重新创建任务。
+
+6. 工件显示缺失  
+检查 `job detail` 里的 `rel_path` 是否存在；若是 required artifact 缺失，通常意味着该任务执行中断或处于早期阶段。
