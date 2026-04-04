@@ -190,7 +190,7 @@ def _sanitize_request_payload(payload: dict[str, Any]) -> dict[str, Any]:
     return _deep_copy(payload)
 
 
-def _new_job_payload(*, job_id: str, request_payload: dict[str, Any]) -> dict[str, Any]:
+def _new_job_payload(*, job_id: str, request_payload: dict[str, Any], owner_tag: str = "") -> dict[str, Any]:
     now = _utc_now_iso()
     session_id = str(request_payload.get("session_id", "")).strip()
     return {
@@ -213,6 +213,7 @@ def _new_job_payload(*, job_id: str, request_payload: dict[str, Any]) -> dict[st
         "started_at": "",
         "finished_at": "",
         "elapsed_seconds": None,
+        "owner_tag": str(owner_tag).strip(),
     }
 
 
@@ -254,12 +255,12 @@ def _prune_old_jobs(project_root: Path, *, keep: int = DEFAULT_JOB_RETENTION) ->
             continue
 
 
-def create_job(project_root: Path, request_payload: dict[str, Any]) -> str:
+def create_job(project_root: Path, request_payload: dict[str, Any], owner_tag: str = "") -> str:
     project_root = project_root.resolve()
     normalized = _sanitize_request_payload(request_payload)
     timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     job_id = f"job-{timestamp}-{uuid.uuid4().hex[:8]}"
-    job = _new_job_payload(job_id=job_id, request_payload=normalized)
+    job = _new_job_payload(job_id=job_id, request_payload=normalized, owner_tag=owner_tag)
     path = _job_file(project_root, job_id)
     with _FILE_LOCK:
         _write_json_atomic(path, job)
@@ -275,16 +276,24 @@ def get_job(project_root: Path, job_id: str) -> dict[str, Any]:
         return _deep_copy(job)
 
 
-def list_jobs(project_root: Path, limit: int = DEFAULT_JOB_RETENTION, status_filter: str = "") -> list[dict[str, Any]]:
+def list_jobs(
+    project_root: Path,
+    limit: int = DEFAULT_JOB_RETENTION,
+    status_filter: str = "",
+    owner_tag: str = "",
+) -> list[dict[str, Any]]:
     project_root = project_root.resolve()
     jobs_dir = _jobs_dir(project_root)
     rows: list[dict[str, Any]] = []
+    owner_filter = str(owner_tag).strip()
     for path in jobs_dir.glob("*.json"):
         job = _validate_job_payload(_read_json(path))
         if not job:
             continue
         job_status = str(job.get("status", "")).strip()
         if status_filter and job_status != str(status_filter).strip():
+            continue
+        if owner_filter and str(job.get("owner_tag", "")).strip() != owner_filter:
             continue
         rows.append(job)
     rows.sort(key=lambda item: str(item.get("updated_at", "")), reverse=True)
@@ -464,4 +473,3 @@ def get_worker_state() -> dict[str, Any]:
             "running": running,
             "active_job_id": _ACTIVE_JOB_ID if running else "",
         }
-

@@ -4,6 +4,7 @@ import json
 import re
 import sys
 import time
+import uuid
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -387,6 +388,16 @@ def _load_markdown(path: Path | None) -> str:
         return ""
 
 
+def _ensure_dashboard_user_tag() -> str:
+    key = "dashboard_user_tag"
+    cached = str(st.session_state.get(key, "")).strip()
+    if cached:
+        return cached
+    generated = f"web-{uuid.uuid4().hex[:12]}"
+    st.session_state[key] = generated
+    return generated
+
+
 def _render_session_summary(snapshot: SessionSnapshot) -> None:
     c1, c2, c3, c4, c5 = st.columns(5)
     c1.metric("Session Status", snapshot.status)
@@ -724,7 +735,7 @@ def _render_job_detail(*, project_root: Path, job: dict[str, Any]) -> None:
         st.json(job)
 
 
-def _render_run_new_paper_panel(project_root: Path) -> None:
+def _render_run_new_paper_panel(project_root: Path, owner_tag: str) -> None:
     run_next_queued_job_async(project_root, max_workers=1)
     worker_state = get_worker_state()
 
@@ -735,6 +746,7 @@ def _render_run_new_paper_panel(project_root: Path) -> None:
         + ("running" if worker_state.get("running") else "idle")
         + f" | active_job_id: {str(worker_state.get('active_job_id', '') or '-')}"
     )
+    st.caption("当前视图默认只展示本浏览器创建的任务与相关 session。")
     _render_create_job_guide()
 
     default_config_path = "configs/openclaw.agentic.yaml"
@@ -814,7 +826,7 @@ def _render_run_new_paper_panel(project_root: Path) -> None:
                 request_payload["session_id"] = str(session_id).strip()
 
             try:
-                job_id = create_job(project_root=project_root, request_payload=request_payload)
+                job_id = create_job(project_root=project_root, request_payload=request_payload, owner_tag=owner_tag)
                 st.session_state["dashboard_selected_job_id"] = job_id
                 run_next_queued_job_async(project_root)
                 st.success(f"任务已创建：{job_id}")
@@ -841,6 +853,7 @@ def _render_run_new_paper_panel(project_root: Path) -> None:
             project_root=project_root,
             limit=200,
             status_filter="" if status_filter == "all" else status_filter,
+            owner_tag=owner_tag,
         )
         jobs_df = _build_jobs_dataframe(jobs)
         jobs_display_df = jobs_df.rename(
@@ -889,9 +902,24 @@ def _render_run_new_paper_panel(project_root: Path) -> None:
         st.rerun()
 
 
-def _render_session_explorer(project_root: Path, snapshots: list[SessionSnapshot]) -> None:
+def _render_session_explorer(
+    project_root: Path,
+    snapshots: list[SessionSnapshot],
+    related_session_ids: set[str],
+) -> None:
+    show_all_sessions = st.checkbox(
+        "显示全部 session（管理员视角）",
+        value=False,
+        help="默认只显示当前浏览器用户相关的 session，勾选后显示仓库内全部 session。",
+    )
+    if not show_all_sessions:
+        snapshots = [item for item in snapshots if item.session_id in related_session_ids]
+
     if not snapshots:
-        st.info("当前没有可展示的 session。你可以先在左侧“Run New Paper”里启动一次运行。")
+        if show_all_sessions:
+            st.info("当前没有可展示的 session。你可以先在左侧“Run New Paper”里启动一次运行。")
+        else:
+            st.info("当前用户还没有相关 session。请先在左侧“Run New Paper”创建任务。")
         return
 
     sessions_df = _build_sessions_dataframe(snapshots)
@@ -1026,16 +1054,24 @@ def main() -> None:
     default_root = _default_project_root()
     root_input = st.sidebar.text_input("Project Root", value=str(default_root))
     project_root = Path(root_input).expanduser().resolve()
+    owner_tag = _ensure_dashboard_user_tag()
 
     tab_run, tab_explorer = st.tabs(["Run New Paper", "Session Explorer"])
 
     with tab_run:
-        _render_run_new_paper_panel(project_root)
+        _render_run_new_paper_panel(project_root, owner_tag=owner_tag)
+
+    current_user_jobs = list_jobs(project_root=project_root, limit=200, owner_tag=owner_tag)
+    related_session_ids = {
+        str(item.get("session_id", "")).strip()
+        for item in current_user_jobs
+        if str(item.get("session_id", "")).strip()
+    }
 
     session_dirs = _discover_session_dirs(project_root)
     snapshots = [_load_session_snapshot(project_root, session_dir) for session_dir in session_dirs]
     with tab_explorer:
-        _render_session_explorer(project_root, snapshots)
+        _render_session_explorer(project_root, snapshots, related_session_ids=related_session_ids)
 
 
 if __name__ == "__main__":

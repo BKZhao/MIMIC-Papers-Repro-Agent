@@ -47,6 +47,7 @@ paper-repro-dashboard --server.port 8510
 
 2. `Job List`
 - 展示最近任务：`job_id / status / progress_stage / session_id / run_mode / execution_status / elapsed`
+- 默认仅显示“当前浏览器用户”创建的任务，避免混入他人任务
 - 支持状态筛选、手动刷新
 - 运行中可自动刷新（2-3 秒）
 
@@ -84,6 +85,8 @@ paper-repro-dashboard --server.port 8510
 ### 4.3 Session Explorer（历史审计视图）
 
 保留原有 Session Explorer，继续用于审计和回看：
+- 默认仅显示当前浏览器用户相关 session
+- 如需查看全量 session，可勾选 `显示全部 session（管理员视角）`
 
 1. `Session 总览`  
 显示每个 session 的状态、裁决、执行路线、迭代次数、误差与 token。
