@@ -16,7 +16,9 @@ __all__ = [
     "paper",
     "pipeline",
     "registry",
+    "reporting",
     "runtime",
     "sql",
+    "stats_tools",
     "workflow_contract",
 ]
